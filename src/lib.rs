@@ -12,45 +12,32 @@ use pyo3::types::{PyBytes, PyByteArray};
 use pyo3::exceptions::{PyValueError};
 
 
-fn u32_le(b: &[u8; 4]) -> u32 {
-    // Convert 4 u8 to a little endian ordered u32 (unsigned long)
-     (b[0] as u32)        | ((b[1] as u32) <<  8) |
-    ((b[2] as u32) << 16) | ((b[3] as u32) << 24)
-}
-
-
 fn parse_header(b: &[u8; 64]) -> [u32; 15] {
     /* Return the segment offsets from the RLE header.
 
     Parameters
     ----------
-    b : &[u8; 64]
+    b
         The 64 byte RLE header.
 
-    Returns
-    -------
-    [u32; 15]
-        The segment offsets.
     */
-    let offsets = [
-        u32_le(&[ b[4],  b[5],  b[6],  b[7]]),
-        u32_le(&[ b[8],  b[9], b[10], b[11]]),
-        u32_le(&[b[12], b[13], b[14], b[15]]),
-        u32_le(&[b[16], b[17], b[18], b[19]]),
-        u32_le(&[b[20], b[21], b[22], b[23]]),
-        u32_le(&[b[24], b[25], b[26], b[27]]),
-        u32_le(&[b[28], b[29], b[30], b[31]]),
-        u32_le(&[b[32], b[33], b[34], b[35]]),
-        u32_le(&[b[36], b[37], b[38], b[39]]),
-        u32_le(&[b[40], b[41], b[42], b[43]]),
-        u32_le(&[b[44], b[45], b[46], b[47]]),
-        u32_le(&[b[48], b[49], b[50], b[51]]),
-        u32_le(&[b[52], b[53], b[54], b[55]]),
-        u32_le(&[b[56], b[57], b[58], b[59]]),
-        u32_le(&[b[60], b[61], b[62], b[63]])
-    ];
-
-    return offsets
+    return [
+        u32::from_le_bytes([ b[4],  b[5],  b[6],  b[7]]),
+        u32::from_le_bytes([ b[8],  b[9], b[10], b[11]]),
+        u32::from_le_bytes([b[12], b[13], b[14], b[15]]),
+        u32::from_le_bytes([b[16], b[17], b[18], b[19]]),
+        u32::from_le_bytes([b[20], b[21], b[22], b[23]]),
+        u32::from_le_bytes([b[24], b[25], b[26], b[27]]),
+        u32::from_le_bytes([b[28], b[29], b[30], b[31]]),
+        u32::from_le_bytes([b[32], b[33], b[34], b[35]]),
+        u32::from_le_bytes([b[36], b[37], b[38], b[39]]),
+        u32::from_le_bytes([b[40], b[41], b[42], b[43]]),
+        u32::from_le_bytes([b[44], b[45], b[46], b[47]]),
+        u32::from_le_bytes([b[48], b[49], b[50], b[51]]),
+        u32::from_le_bytes([b[52], b[53], b[54], b[55]]),
+        u32::from_le_bytes([b[56], b[57], b[58], b[59]]),
+        u32::from_le_bytes([b[60], b[61], b[62], b[63]])
+    ]
 }
 
 
@@ -62,11 +49,11 @@ fn decode_frame<'a>(
 
     Parameters
     ----------
-    enc : bytes | &[u8]
+    enc : bytes
         The RLE encoded frame.
-    px_per_sample : int | u32
+    px_per_sample : int
         The number of pixels per sample (rows x columns).
-    bits_per_px : int | u8
+    bits_per_px : int
         The number of bits per pixel, should be a multiple of 8.
 
     Returns
@@ -76,7 +63,7 @@ fn decode_frame<'a>(
     */
     match _decode_frame(enc, px_per_sample, bits_per_px) {
         Ok(frame) => return Ok(PyByteArray::new(py, &frame)),
-        Err(e) => return Err(PyValueError::new_err(e.to_string())),
+        Err(err) => return Err(PyValueError::new_err(err.to_string())),
     }
 }
 
@@ -95,8 +82,9 @@ fn _decode_frame(
     bits_per_px
         The number of bits per pixel, should be a multiple of 8.
     */
-    // Check the number of pixels per sample is valid
-    // TODO
+    // px_per_sample is ds.Rows x ds.Columns, which are both US
+    // US == u16, and u16 x u16 < u32, so u32 should be sufficient, but
+    // will need to be checked on the Python end of things
 
     // Check the number of bits per pixel is valid
     match bits_per_px {
@@ -119,6 +107,7 @@ fn _decode_frame(
         }
     }
 
+    // `bytes_per_pixel` is in [1, 31]
     let bytes_per_pixel = bits_per_px / 8;
 
     println!("Parsing header...");
@@ -132,17 +121,39 @@ fn _decode_frame(
     let arr = <&[u8; 64]>::try_from(&enc[0..64]).unwrap();
     let all_offsets: [u32; 15] = parse_header(arr);
 
+    // max_length must be no larger than u32
+    // TODO: Add check
+    let max_length = u32::try_from(enc.len());
+    match max_length {
+        Ok(val) => val,
+        Err(_) => {
+            return Err(
+                String::from(
+                    "Unable to decode, length of data is more than 2^32 - 1 bytes"
+                ).into()
+            )
+        }
+    }
+
     // Get non-zero offsets and find the number of segments
     // `nr_segments` is in [0, 15]
     let mut nr_segments = 0;
     let mut offsets: Vec<u32> = Vec::new();
     for val in all_offsets.iter().filter(|&n| *n != 0) {
+        if *val > (max_length - 1u32) {
+            return Err(
+                String::from(
+                    "Invalid segment offset present in the RLE header"
+                ).into()
+            )
+        }
+
         offsets.push(*val);
         nr_segments += 1;
     }
 
     // Ensure we have a final ending offset
-    offsets.push(<u32>::try_from(enc.len()).unwrap());
+    offsets.push(max_length - 1u32);
 
     println!("Offsets {:?}", offsets);
     println!("Segments {}", nr_segments);
@@ -174,13 +185,25 @@ fn _decode_frame(
       Pxl 1   Pxl 2   ... Pxl N   | Pxl 1   Pxl 2   ... Pxl N   | ...
       MSB LSB MSB LSB ... MSB LSB | MSB LSB MSB LSB ... MSB LSB | ...
     */
-    // TODO: watch for overflows here -> try_from
-    let expected_length = (
-        px_per_sample * u32::from(bytes_per_pixel) * u32::from(samples_per_px)
-    ) as usize;
 
-    let mut out: Vec<u8> = vec![0; expected_length];
+    // Watch for overflow here
+    // (31 * 3) * (px_per_sample u32) -> requires u64
+    // usize::overflowing_mul()?
+    let expected_length = u64::from(
+        px_per_sample * u32::from(bytes_per_pixel * samples_per_px)
+    );
 
+    // TODO: does this make sense?
+    //if u64::MAX > usize::MAX {
+    //    return Err(
+    //        String::from(
+    //            "The size of the decoded data is larger than available"
+    //        ).into()
+    //    )
+    //}
+    let mut out = vec![0u8; usize::try_from(expected_length)?];
+
+    // TODO: Add error check that enough data is available in enc[start..end]
     for sample in 0..samples_per_px {
         for byte_offset in 0..bytes_per_pixel {
             let idx = (sample * bytes_per_pixel + byte_offset) as usize;
@@ -221,11 +244,7 @@ fn decode_segment<'a>(enc: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
     */
     match _decode_segment(enc) {
         Ok(frame) => return Ok(PyBytes::new(py, &frame[..])),
-        Err(_e) => {
-            return Err(
-                PyValueError::new_err("An error occurred decoding the segment")
-            )
-        }
+        Err(err) => return Err(PyValueError::new_err(err.to_string())),
     }
 }
 
@@ -271,7 +290,7 @@ fn _decode_segment(enc: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
             pos += header_byte + 1;
         } // header_byte == 128 is noop
 
-        if pos >= (enc.len() - 1) {
+        if pos >= max_offset {
             break;
         }
     }
@@ -286,18 +305,4 @@ fn _rle(_: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(decode_frame, m)?).unwrap();
 
     Ok(())
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn u32_le_tests() {
-        assert_eq!(0u32, u32_le(&[0u8, 0u8, 0u8, 0u8]));
-        assert_eq!(255u32, u32_le(&[255u8, 0u8, 0u8, 0u8]));
-        assert_eq!(4278190080u32, u32_le(&[0u8, 0u8, 0u8, 255u8]));
-        assert_eq!(u32::MAX, u32_le(&[255u8, 255u8, 255u8, 255u8]));
-    }
 }
