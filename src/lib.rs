@@ -9,15 +9,13 @@ use std::convert::TryFrom;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use pyo3::types::{PyBytes, PyByteArray};
-use pyo3::exceptions::{PyValueError, PyNotImplementedError};
+use pyo3::exceptions::{PyValueError};
 
 
 fn u32_le(b: &[u8; 4]) -> u32 {
-    /* Convert 4 u8 to a little endian ordered u32 (unsigned long) */
-    (b[0] as u32) |
-    ((b[1] as u32) <<  8) |
-    ((b[2] as u32) << 16) |
-    ((b[3] as u32) << 24)
+    // Convert 4 u8 to a little endian ordered u32 (unsigned long)
+     (b[0] as u32)        | ((b[1] as u32) <<  8) |
+    ((b[2] as u32) << 16) | ((b[3] as u32) << 24)
 }
 
 
@@ -78,11 +76,7 @@ fn decode_frame<'a>(
     */
     match _decode_frame(enc, px_per_sample, bits_per_px) {
         Ok(frame) => return Ok(PyByteArray::new(py, &frame)),
-        Err(e) => {
-            return Err(
-                PyValueError::new_err(e.to_string())
-            )
-        }
+        Err(e) => return Err(PyValueError::new_err(e.to_string())),
     }
 }
 
@@ -180,11 +174,12 @@ fn _decode_frame(
       Pxl 1   Pxl 2   ... Pxl N   | Pxl 1   Pxl 2   ... Pxl N   | ...
       MSB LSB MSB LSB ... MSB LSB | MSB LSB MSB LSB ... MSB LSB | ...
     */
-    let length = (
+    // TODO: watch for overflows here -> try_from
+    let expected_length = (
         px_per_sample * u32::from(bytes_per_pixel) * u32::from(samples_per_px)
     ) as usize;
 
-    let mut out: Vec<u8> = vec![0; length];
+    let mut out: Vec<u8> = vec![0; expected_length];
 
     for sample in 0..samples_per_px {
         for byte_offset in 0..bytes_per_pixel {
@@ -201,57 +196,8 @@ fn _decode_frame(
                 //
                 println!("Bad segment length");
             }
+            // Hmm, how do we shuffle efficiently here?
             //out[]
-        }
-    }
-
-    Ok(out)
-}
-
-
-fn _decode_segment(enc: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
-    /* Return a decoded RLE segment as bytes.
-
-    Parameters
-    ----------
-    enc : &[u8]
-        The encoded segment.
-
-    Returns
-    -------
-    Vec<u8>
-        The decoded segment.
-    */
-    // TODO: make sure we don't grab from outside the array...
-    // Maybe return Result instead
-    let mut out: Vec<u8> = Vec::new();
-    let mut pos = 0;
-    let mut header_byte: u8;
-    let mut nr_copies: u16;
-
-    loop {
-        // header_byte is N
-        header_byte = enc[pos];
-        pos += 1;
-        if header_byte > 128 {
-            // Extend by copying the next byte (-N + 1) times
-            // however since using uint8 instead of int8 this will be
-            // (256 - N + 1) times
-            nr_copies = 257 - u16::from(header_byte);
-            for _ in 0..nr_copies {
-                out.push(enc[pos]);
-            }
-            pos += 1;
-        } else if header_byte < 128 {
-            // Extend by literally copying the next (N + 1) bytes
-            for _ in 0..(header_byte + 1) {
-                out.push(enc[pos]);
-                pos += 1;
-            }
-        }
-
-        if pos >= (enc.len() - 1) {
-            break;
         }
     }
 
@@ -281,6 +227,56 @@ fn decode_segment<'a>(enc: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
             )
         }
     }
+}
+
+
+fn _decode_segment(enc: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+    /* Return a decoded RLE segment as bytes.
+
+    Parameters
+    ----------
+    enc
+        The encoded segment.
+    */
+    let mut out: Vec<u8> = Vec::new();
+    let mut pos = 0;
+    let mut header_byte: usize;
+    let max_offset = enc.len() - 1;
+    let err = Err(
+        String::from(
+            "The end of the encoded data was reached before the segment \
+            was completely decoded"
+        ).into()
+    );
+
+    loop {
+        // `header_byte` is equivalent to N in the DICOM Standard
+        header_byte = usize::from(enc[pos]);
+        pos += 1;
+        if header_byte > 128 {
+            if pos > max_offset {
+                return err
+            }
+            // Extend by copying the next byte (-N + 1) times
+            // however since using uint8 instead of int8 this will be
+            // (256 - N + 1) times
+            out.extend(vec![enc[pos]; 257 - header_byte]);
+            pos += 1;
+        } else if header_byte < 128 {
+            if (pos + header_byte) > max_offset {
+                return err
+            }
+            // Extend by literally copying the next (N + 1) bytes
+            out.extend(&enc[pos..(pos + header_byte + 1)]);
+            pos += header_byte + 1;
+        } // header_byte == 128 is noop
+
+        if pos >= (enc.len() - 1) {
+            break;
+        }
+    }
+
+    Ok(out)
 }
 
 
