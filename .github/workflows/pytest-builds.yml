@@ -31,6 +31,7 @@ jobs:
       run: |
         pip install --upgrade pip
         pip install setuptools-rust pytest pydicom coverage pytest-cov
+        pip install git+https://github.com/pydicom/pylibjpeg-data
 
     - name: Test with pytest
       env:
