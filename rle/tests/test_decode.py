@@ -42,4 +42,5 @@ class TestParseHeader:
         px_per_sample = ds.Rows * ds.Columns
         bits_per_px = ds.BitsAllocated
         #print(type(frame))
-        decode_frame(frame, px_per_sample, bits_per_px)
+        frame = decode_frame(frame, px_per_sample, bits_per_px)
+        print(type(frame), len(frame))

@@ -3,12 +3,11 @@
 // bytearray -> Vec<u8>
 // list[T] -> Vec<T>
 
-//use std::error::Error;
 use std::convert::TryFrom;
 
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyByteArray};
 
 
 fn u32_le(b: &[u8; 4]) -> u32 {
@@ -33,7 +32,6 @@ fn parse_header(b: &[u8; 64]) -> [u32; 15] {
     [u32; 15]
         The segment offsets.
     */
-    println!("Converting offsets to u32");
     let offsets = [
         u32_le(&[ b[4],  b[5],  b[6],  b[7]]),
         u32_le(&[ b[8],  b[9], b[10], b[11]]),
@@ -51,15 +49,43 @@ fn parse_header(b: &[u8; 64]) -> [u32; 15] {
         u32_le(&[b[56], b[57], b[58], b[59]]),
         u32_le(&[b[60], b[61], b[62], b[63]])
     ];
-    println!("Done");
-    offsets
+
+    return offsets
 }
 
 
 #[pyfunction]
 fn decode_frame<'a>(
         enc: &[u8], px_per_sample: u32, bits_per_px: u8, py: Python<'a>
-) -> PyResult<&'a PyBytes> {
+) -> PyResult<&'a PyByteArray> {
+    /* Return the decoded frame.
+
+    Parameters
+    ----------
+    enc : bytes | &[u8]
+        The RLE encoded frame.
+    px_per_sample : int | u32
+        The number of pixels per sample (rows x columns).
+    bits_per_px : int | u8
+        The number of bits per pixel, should be a multiple of 8.
+
+    Returns
+    -------
+    bytearray
+        The decoded frame.
+    */
+    Ok(
+        PyByteArray::new(
+            py,
+            &_decode_frame(enc, px_per_sample, bits_per_px)
+        )
+    )
+}
+
+
+fn _decode_frame(
+    enc: &[u8], px_per_sample: u32, bits_per_px: u8
+) -> Vec<u8> {
     /* Return the decoded frame.
 
     Parameters
@@ -79,7 +105,7 @@ fn decode_frame<'a>(
     Raises
     ------
     */
-
+    // TODO: Return PyByteArray?
     // No guarantee that enc is at least 64 bytes
     //if enc.len() < 64 {
     //    let result = PyBytes::new(py, &out[..]);
@@ -87,7 +113,10 @@ fn decode_frame<'a>(
     //}
     println!("Length of encoded frame: {} bytes", enc.len());
 
-    // Will panic! if enc.len() < 64>
+    // TODO: check that bits_per_px is a multiple of 8
+
+    // Will raise ValueError if enc.len() < 64
+    // Better exception message would be handy
     println!("Parsing header...");
     // TryFromSliceError
     let arr = <&[u8; 64]>::try_from(&enc[0..64]);
@@ -96,7 +125,7 @@ fn decode_frame<'a>(
     //    Err(e) => Err(String::from("Unable to parse the RLE header")),
     //}
     println!("Raw header: {:?}", arr);
-    let all_offsets: [u32; 15] = parse_header(arr?);
+    let all_offsets: [u32; 15] = parse_header(arr.unwrap());
 
     // `nr_segments` is in [0, 15]
     let mut nr_segments = 0;
@@ -109,13 +138,17 @@ fn decode_frame<'a>(
         nr_segments += 1;
     }
 
+    // Ensure we have a final ending offset
+    offsets.push(<u32>::try_from(enc.len()).unwrap());
+
+    let bytes_per_pixel = bits_per_px / 8;
     println!("Offsets {:?}", offsets);
     println!("Segments {}", nr_segments);
     println!("Bits per pixel {}", bits_per_px);
 
     // px_per_sample is the expected length of the decoded segment
-    // samples_per_px is nr_segments / bits_per_px and should be 1 or 3
-    let samples_per_px = nr_segments / (bits_per_px / 8);
+    // samples_per_px is 1 or 3
+    let samples_per_px = nr_segments / bytes_per_pixel;
     println!("Samples per px {}", samples_per_px);
     //match samples_per_px {
     //    1 => (),
@@ -139,31 +172,50 @@ fn decode_frame<'a>(
       Pxl 1   Pxl 2   ... Pxl N   | Pxl 1   Pxl 2   ... Pxl N   | ...
       MSB LSB MSB LSB ... MSB LSB | MSB LSB MSB LSB ... MSB LSB | ...
     */
-    let mut out: Vec<u8> = Vec::new();
-    //let mut pos = 0;
-    //let mut header_byte: u8;
-    //let mut nr_copies: u16;
+    let length = (
+        px_per_sample * u32::from(bytes_per_pixel) * u32::from(samples_per_px)
+    ) as usize;
 
+    let mut out: Vec<u8> = vec![0; length];
 
-    let result = PyBytes::new(py, &out[..]);
-    Ok(result)
+    for sample in 0..samples_per_px {
+        for byte_offset in 0..bytes_per_pixel {
+            let idx = (sample * bytes_per_pixel + byte_offset) as usize;
+            let start = offsets[idx] as usize;
+            let end = offsets[idx + 1] as usize;
+            println!("Start..end {} {}", start, end);
+            let data = <&[u8]>::try_from(&enc[start..end]).unwrap();
+            let segment = _decode_segment(data);
+            let segment_len = segment.len();
+            println!("Segment length {}", segment_len);
+            // Check decoded segment length is good
+            if segment_len != px_per_sample as usize {
+                //
+                println!("Bad segment length");
+            }
+            //out[]
+        }
+    }
+
+    out
 }
 
 
-#[pyfunction]
-fn decode_segment<'a>(enc: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
+fn _decode_segment(enc: &[u8]) -> Vec<u8> {
     /* Return a decoded RLE segment as bytes.
 
     Parameters
     ----------
-    enc : bytes | &[u8]
+    enc : &[u8]
         The encoded segment.
 
     Returns
     -------
-    bytes
+    Vec<u8>
         The decoded segment.
     */
+    // TODO: make sure we don't grab from outside the array...
+    // Maybe return Result instead
     let mut out: Vec<u8> = Vec::new();
     let mut pos = 0;
     let mut header_byte: u8;
@@ -195,8 +247,25 @@ fn decode_segment<'a>(enc: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
         }
     }
 
-    let result = PyBytes::new(py, &out[..]);
-    Ok(result)
+    out
+}
+
+
+#[pyfunction]
+fn decode_segment<'a>(enc: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
+    /* Return a decoded RLE segment as bytes.
+
+    Parameters
+    ----------
+    enc : bytes | &[u8]
+        The encoded segment.
+
+    Returns
+    -------
+    bytes
+        The decoded segment.
+    */
+    Ok(PyBytes::new(py, &_decode_segment(enc)[..]))
 }
 
 
