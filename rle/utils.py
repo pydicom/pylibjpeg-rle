@@ -2,6 +2,8 @@
 
 from struct import unpack
 
+from rle._rle import decode_frame
+
 
 def parse_header(data):
     # Little endian

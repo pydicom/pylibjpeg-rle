@@ -1,35 +1,14 @@
 
 import os
 import sys
-from pathlib import Path
-import platform
-import setuptools
 from setuptools import setup, find_packages
-from setuptools.extension import Extension
+from setuptools_rust import Binding, RustExtension
+
 import subprocess
 from distutils.command.build import build as build_orig
 import distutils.sysconfig
 
 
-RLE_SRC = os.path.join('rle', 'src', 'rustrle')
-
-
-# Workaround for needing cython and numpy
-# Solution from: https://stackoverflow.com/a/54128391/12606901
-class build(build_orig):
-    def finalize_options(self):
-        super().finalize_options()
-        __builtins__.__NUMPY_SETUP__ = False
-
-        import numpy
-        for ext in self.distribution.ext_modules:
-            if ext in extensions:
-                ext.include_dirs.append(numpy.get_include())
-
-
-extensions = [
-
-]
 
 VERSION_FILE = os.path.join('rle', '_version.py')
 with open(VERSION_FILE) as fp:
@@ -41,8 +20,8 @@ with open('README.md', 'r') as fp:
 setup(
     name = 'pylibjpeg-rle',
     description = (
-        "A Python wrapper for rustrle, with a focus on use as a plugin for "
-        "for pylibjpeg"
+        "Python bindings for a fast RLE decoder, with a focus on use as a "
+        "plugin for for pylibjpeg"
     ),
     long_description = long_description,
     long_description_content_type = 'text/markdown',
@@ -53,7 +32,7 @@ setup(
     license = "MIT",
     keywords = (
         "dicom pydicom python medicalimaging radiotherapy oncology imaging "
-        "radiology nuclearmedicine rle pylibjpeg"
+        "radiology nuclearmedicine rle pylibjpeg rust"
     ),
     classifiers = [
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
@@ -80,10 +59,9 @@ setup(
     include_package_data = True,
     zip_safe = False,
     python_requires = ">=3.6",
-    setup_requires = ['setuptools>=18.0'],
+    setup_requires = ['setuptools>=18.0', 'setuptools-rust'],
     install_requires = [],
-    cmdclass = {'build': build},
-    ext_modules = [Extension('rle.librle', [])],
+    rust_extensions = [RustExtension('rle._rle', binding=Binding.PyO3)],
     # Plugin registrations
     entry_points={
         'pylibjpeg.pixel_data_decoders': [
