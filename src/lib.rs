@@ -12,14 +12,39 @@ use pyo3::types::{PyBytes, PyByteArray};
 use pyo3::exceptions::{PyValueError};
 
 
-fn parse_header(b: &[u8; 64]) -> [u32; 15] {
+#[pyfunction]
+fn parse_header(enc: &[u8]) -> PyResult<Vec<u32>> {
+    /* Return the segment offsets from the RLE header.
+
+    Parameters
+    ----------
+    b : bytes
+        The 64 byte RLE header.
+
+    Returns
+    -------
+    List[int]
+        All 15 segment offsets found in the header.
+    */
+    if enc.len() != 64 {
+        return Err(PyValueError::new_err("The RLE header must be 64 bytes long"))
+    }
+
+    let header = <&[u8; 64]>::try_from(&enc[0..64]).unwrap();
+    let mut offsets: Vec<u32> = Vec::new();
+    offsets.extend(&_parse_header(header)[..]);
+
+    Ok(offsets)
+}
+
+
+fn _parse_header(b: &[u8; 64]) -> [u32; 15] {
     /* Return the segment offsets from the RLE header.
 
     Parameters
     ----------
     b
         The 64 byte RLE header.
-
     */
     return [
         u32::from_le_bytes([ b[4],  b[5],  b[6],  b[7]]),
@@ -119,41 +144,41 @@ fn _decode_frame(
         )
     }
     let arr = <&[u8; 64]>::try_from(&enc[0..64]).unwrap();
-    let all_offsets: [u32; 15] = parse_header(arr);
+    let all_offsets: [u32; 15] = _parse_header(arr);
 
     // max_length must be no larger than u32
     // TODO: Add check
-    let max_length = u32::try_from(enc.len());
-    match max_length {
-        Ok(val) => val,
-        Err(_) => {
-            return Err(
-                String::from(
-                    "Unable to decode, length of data is more than 2^32 - 1 bytes"
-                ).into()
-            )
-        }
-    }
+    //let max_length = u32::try_from(enc.len());
+    //match max_length {
+    //    Ok(val) => val,
+    //    Err(_) => {
+    //        return Err(
+    //            String::from(
+    //                "Unable to decode, length of data is more than 2^32 - 1 bytes"
+    //            ).into()
+    //        )
+    //    }
+    //}
 
     // Get non-zero offsets and find the number of segments
     // `nr_segments` is in [0, 15]
     let mut nr_segments = 0;
     let mut offsets: Vec<u32> = Vec::new();
     for val in all_offsets.iter().filter(|&n| *n != 0) {
-        if *val > (max_length - 1u32) {
-            return Err(
-                String::from(
-                    "Invalid segment offset present in the RLE header"
-                ).into()
-            )
-        }
+        //if *val > (max_length - 1u32) {
+        //    return Err(
+        //        String::from(
+        //            "Invalid segment offset present in the RLE header"
+        //        ).into()
+        //    )
+        //}
 
         offsets.push(*val);
         nr_segments += 1;
     }
 
     // Ensure we have a final ending offset
-    offsets.push(max_length - 1u32);
+    offsets.push(u32::try_from(enc.len()).unwrap());
 
     println!("Offsets {:?}", offsets);
     println!("Segments {}", nr_segments);
@@ -189,9 +214,9 @@ fn _decode_frame(
     // Watch for overflow here
     // (31 * 3) * (px_per_sample u32) -> requires u64
     // usize::overflowing_mul()?
-    let expected_length = u64::from(
+    let expected_length = (
         px_per_sample * u32::from(bytes_per_pixel * samples_per_px)
-    );
+    ) as usize;
 
     // TODO: does this make sense?
     //if u64::MAX > usize::MAX {
@@ -201,7 +226,7 @@ fn _decode_frame(
     //        ).into()
     //    )
     //}
-    let mut out = vec![0u8; usize::try_from(expected_length)?];
+    let mut out = vec![0u8; expected_length];
 
     // TODO: Add error check that enough data is available in enc[start..end]
     for sample in 0..samples_per_px {
@@ -263,8 +288,8 @@ fn _decode_segment(enc: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
     let max_offset = enc.len() - 1;
     let err = Err(
         String::from(
-            "The end of the encoded data was reached before the segment \
-            was completely decoded"
+            "The end of the data was reached before the segment was \
+            completely decoded"
         ).into()
     );
 
@@ -301,6 +326,7 @@ fn _decode_segment(enc: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
 
 #[pymodule]
 fn _rle(_: Python, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(parse_header, m)?).unwrap();
     m.add_function(wrap_pyfunction!(decode_segment, m)?).unwrap();
     m.add_function(wrap_pyfunction!(decode_frame, m)?).unwrap();
 
