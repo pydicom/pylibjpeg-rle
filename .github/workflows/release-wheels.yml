@@ -49,7 +49,7 @@ jobs:
         python --version
         python -m cibuildwheel --output-dir dist
       env:
-          CIBW_BEFORE_ALL: curl -sSf https://sh.rustup.rs | sh -y
+          CIBW_BEFORE_ALL: curl -sSf https://sh.rustup.rs | sh -s -- -y
 
     - uses: actions/upload-artifact@v2
       with:
