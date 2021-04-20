@@ -12,7 +12,7 @@ pip install pylibjpeg-rle
 ```
 #### Installing the development version
 
-Make sure [Python](https://www.python.org/) and [Git](https://git-scm.com/) and
+Make sure [Python](https://www.python.org/), [Git](https://git-scm.com/) and
 [Rust](https://www.rust-lang.org/) are installed. For Windows, you also need to install
 [Microsoft's C++ Build Tools](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16).
 ```bash
@@ -43,8 +43,9 @@ python -m pip install pylibjpeg-rle
 ### Usage
 #### With pylibjpeg and pydicom
 
-Because pydicom defaults to the NumPy RLE decoder, you must specify which
-RLE handler you want to use when decompressing the *Pixel Data*:
+Because pydicom defaults to the NumPy RLE decoder, you must specify the use
+of pylibjpeg as the RLE decoder you want to use when decompressing the
+*Pixel Data*:
 ```python
 from pydicom import dcmread
 from pydicom.data import get_testdata_file

@@ -38,7 +38,6 @@ jobs:
       run: |
         pip install -U pip
         pip install cibuildwheel==1.10.0
-        pip install setuptools-rust
 
     - name: Build sdist
       run: |
@@ -48,6 +47,8 @@ jobs:
       run: |
         python --version
         python -m cibuildwheel --output-dir dist
+      env:
+          CIBW_BEFORE_BUILD: pip install setuptools-rust
 
     - uses: actions/upload-artifact@v2
       with:
