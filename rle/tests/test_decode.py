@@ -4,6 +4,8 @@ from struct import pack
 
 import pytest
 
+import numpy as np
+
 try:
     from pydicom import dcmread
     import pydicom.config
@@ -12,6 +14,7 @@ try:
     from pydicom.pixel_data_handlers.rle_handler import (
         _parse_rle_header, _rle_decode_frame, _rle_decode_segment
     )
+    from pydicom.pixel_data_handlers.util import pixel_dtype, reshape_pixel_array
     from pydicom.uid import RLELossless
     HAVE_PYDICOM = True
 except ImportError:
@@ -464,6 +467,7 @@ class TestDecodeFrame:
     def test_one(self):
         # 2 segments, (64, 1948)
         ds = INDEX['MR_small_RLE.dcm']['ds']
+        print(ds[0x00280000:0x00300000])
         frame_gen = generate_pixel_data_frame(ds.PixelData)
         frame = next(frame_gen)
 
@@ -479,7 +483,18 @@ class TestDecodeFrame:
         #print(type(frame))
         #frame = b'\x00'
         frame = decode_frame(frame, px_per_sample, bits_per_px)
-        print(type(frame), len(frame))
+        print(type(frame), len(frame), frame[:20])
+
+        dtype = pixel_dtype(ds).newbyteorder('>')
+        arr = np.frombuffer(frame, dtype=dtype)
+        arr = reshape_pixel_array(ds, arr)
+        print(arr, arr.shape)
+
+        import matplotlib.pyplot as plt
+        fig, (ax1, ax2) = plt.subplots(1, 2)
+        ax1.imshow(ds.pixel_array)
+        ax2.imshow(arr)
+        plt.show()
 
 
 class TestDecodeSegment:
