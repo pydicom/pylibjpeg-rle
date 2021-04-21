@@ -23,6 +23,7 @@ except ImportError:
 
 from rle.data import get_indexed_datasets
 from rle._rle import decode_segment, decode_frame, parse_header
+from rle.utils import generate_frames
 
 
 INDEX = get_indexed_datasets('1.2.840.10008.1.2.5')
@@ -469,9 +470,10 @@ class TestDecodeFrame:
         # 600 x 800, 8 bit, pr0
         #ds = INDEX['OBXXXX1A_rle.dcm']['ds']
         # 64 x 64, 16 bit, pr1
-        ds = INDEX['MR_small_RLE.dcm']['ds']
+        #ds = INDEX['MR_small_RLE.dcm']['ds']
         # 100 x 100, 32 bit, pr0
         #ds = INDEX["SC_rgb_rle_32bit.dcm"]['ds']
+        ds = INDEX["SC_rgb_rle.dcm"]['ds']
         #print(ds[0x00280000:0x00300000])
         ref = ds.pixel_array
 
@@ -484,14 +486,17 @@ class TestDecodeFrame:
         #result = decode_segment(frame[offsets[0]:offsets[1]])
         #print(result[:20], len(result))
 
-        px_per_sample = ds.Rows * ds.Columns
-        bits_per_px = ds.BitsAllocated
-        frame = decode_frame(frame, px_per_sample, bits_per_px)
+        #px_per_sample = ds.Rows * ds.Columns
+        #bits_per_px = ds.BitsAllocated
+        #frame = decode_frame(frame, px_per_sample, bits_per_px)
 
-        dtype = pixel_dtype(ds).newbyteorder('>')
-        arr = np.frombuffer(frame, dtype=dtype)
-        arr = reshape_pixel_array(ds, arr)
+        #dtype = pixel_dtype(ds).newbyteorder('>')
+        #arr = np.frombuffer(frame, dtype=dtype)
+        #arr = reshape_pixel_array(ds, arr)
         #print(arr, arr.shape)
+
+        gen = generate_frames(ds)
+        arr = next(gen)
 
         import matplotlib.pyplot as plt
         fig, (ax1, ax2) = plt.subplots(1, 2)
