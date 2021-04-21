@@ -1,6 +1,7 @@
 """Tests for decoding RLE data."""
 
 from struct import pack
+import timeit
 
 import pytest
 
@@ -465,15 +466,15 @@ class TestNumpy_RLEHandler:
 @pytest.mark.skipif(not HAVE_PYDICOM, reason="No pydicom")
 class TestDecodeFrame:
     def test_one(self):
-        # 2 segments, (64, 1948)
-        #ds = INDEX['MR_small_RLE.dcm']['ds']
-
+        # 600 x 800, 8 bit, pr0
+        #ds = INDEX['OBXXXX1A_rle.dcm']['ds']
+        # 64 x 64, 16 bit, pr1
+        ds = INDEX['MR_small_RLE.dcm']['ds']
         # 100 x 100, 32 bit, pr0
-        ds = INDEX["SC_rgb_rle_32bit.dcm"]['ds']
+        #ds = INDEX["SC_rgb_rle_32bit.dcm"]['ds']
         print(ds[0x00280000:0x00300000])
         ref = ds.pixel_array
 
-        #ds = INDEX['OBXXXX1A_rle.dcm']['ds']
         frame_gen = generate_pixel_data_frame(ds.PixelData)
         frame = next(frame_gen)
 
@@ -485,13 +486,8 @@ class TestDecodeFrame:
 
         px_per_sample = ds.Rows * ds.Columns
         bits_per_px = ds.BitsAllocated
-        #print(ds.BitsAllocated)
-        #print(type(frame))
-        #frame = b'\x00'
         frame = decode_frame(frame, px_per_sample, bits_per_px)
-        print(type(frame), len(frame), frame[:20])
 
-        #ds.NumberOfFrames = 1
         dtype = pixel_dtype(ds).newbyteorder('>')
         arr = np.frombuffer(frame, dtype=dtype)
         arr = reshape_pixel_array(ds, arr)

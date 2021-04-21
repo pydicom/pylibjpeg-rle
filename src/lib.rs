@@ -142,26 +142,20 @@ fn _decode_frame(
 
     // Ensure `bytes_per_pixel` is in [1, 8]
     let bytes_per_pixel: u8 = bits_per_px / 8;
-    if bytes_per_pixel > 8 {
-        return err_invalid_bytes
-    }
+    if bytes_per_pixel > 8 { return err_invalid_bytes }
 
     // Parse the RLE header and check results
     // --------------------------------------
     // Ensure we have at least enough data for the RLE header
     let encoded_length = enc.len();
-    if encoded_length < 64 {
-        return err_insufficient_data
-    }
+    if encoded_length < 64 { return err_insufficient_data }
 
     let header = <&[u8; 64]>::try_from(&enc[0..64]).unwrap();
     let all_offsets: [u32; 15] = _parse_header(header);
 
     // Ensure we have at least enough encoded data to hit the segment offsets
     let max_offset = *all_offsets.iter().max().unwrap() as usize;
-    if max_offset > encoded_length - 2 {
-        return err_invalid_offset
-    }
+    if max_offset > encoded_length - 2 { return err_invalid_offset }
 
     // Get non-zero offsets and determine the number of segments
     let mut nr_segments: u8 = 0;  // `nr_segments` is in [0, 15]
@@ -172,9 +166,7 @@ fn _decode_frame(
     }
 
     // First offset must always be 64
-    if offsets[0] != 64 {
-        return err_invalid_offset
-    }
+    if offsets[0] != 64 { return err_invalid_offset }
 
     // Ensure we have a final ending offset at the end of the data
     offsets.push(u32::try_from(encoded_length).unwrap());
@@ -223,10 +215,12 @@ fn _decode_frame(
 
     // Decode each segment and place it into the vector
     // ------------------------------------------------
+    let bpp = usize::from(bytes_per_pixel);
+    let pps = usize::try_from(px_per_sample).unwrap();
     // Concatenate sample planes into a frame
     for sample in 0..samples_per_px {  // 0 or (0, 1, 2)
         // Sample offset
-        let so = usize::from(sample * bytes_per_pixel) * px_per_sample as usize;
+        let so = usize::from(sample * bytes_per_pixel) * pps;
 
         // Interleave the segments into a sample plane
         for byte_offset in 0..bytes_per_pixel {  // 0, [1, 2, 3, ..., 7]
@@ -238,7 +232,7 @@ fn _decode_frame(
             let end = usize::try_from(offsets[idx + 1]).unwrap();
 
             // Pre-allocate a vector for the decoded segment
-            let mut segment = Vec::with_capacity(px_per_sample as usize);
+            let mut segment = Vec::with_capacity(pps);
             // Decode the segment
             _decode_segment(
                 <&[u8]>::try_from(&enc[start..end]).unwrap(),
@@ -246,13 +240,9 @@ fn _decode_frame(
             )?;
 
             // Check decoded segment length is good
-            let segment_len = segment.len();
-            if segment_len != px_per_sample as usize {
-                return err_segment_length
-            }
+            if segment.len() != pps { return err_segment_length }
 
             // Interleave segment into frame
-            let bpp = usize::from(bytes_per_pixel);
             let bo = usize::from(byte_offset) + so;
             for (ii, v) in segment.iter().enumerate() {
                 frame[ii * bpp + bo] = *v;
