@@ -127,6 +127,155 @@ fn _decode_frame(
     let err_invalid_nr_samples = Err(
         String::from("The 'Samples Per Pixel' must be 1 or 3").into()
     );
+
+    // Ensure we have a valid bits/px value
+    match bits_per_px {
+        0 => return err_bits_zero,
+        _ => match bits_per_px % 8 {
+            0 => {},
+            _ => return err_bits_not_octal
+        }
+    }
+
+    // Ensure `bytes_per_pixel` is in [1, 8]
+    let bytes_per_pixel: u8 = bits_per_px / 8;
+    if bytes_per_pixel > 8 { return err_invalid_bytes }
+
+    // Parse the RLE header and check results
+    // --------------------------------------
+    // Ensure we have at least enough data for the RLE header
+    let encoded_length = enc.len();
+    if encoded_length < 64 { return err_insufficient_data }
+
+    let header = <&[u8; 64]>::try_from(&enc[0..64]).unwrap();
+    let all_offsets: [u32; 15] = _parse_header(header);
+
+    // Ensure we have at least enough encoded data to hit the segment offsets
+    let max_offset = *all_offsets.iter().max().unwrap() as usize;
+    if max_offset > encoded_length - 2 { return err_invalid_offset }
+
+    // Get non-zero offsets and determine the number of segments
+    let mut nr_segments: u8 = 0;  // `nr_segments` is in [0, 15]
+    let mut offsets: Vec<u32> = Vec::with_capacity(15);
+    for val in all_offsets.iter().filter(|&n| *n != 0) {
+        offsets.push(*val);
+        nr_segments += 1u8;
+    }
+
+    // First offset must always be 64
+    if offsets[0] != 64 { return err_invalid_offset }
+
+    // Ensure we have a final ending offset at the end of the data
+    offsets.push(u32::try_from(encoded_length).unwrap());
+
+    // Ensure offsets are in increasing order
+    let mut last: u32 = 0;
+    for val in offsets.iter() {
+        if *val <= last {
+            return err_invalid_offset
+        }
+        last = *val;
+    }
+
+    // Check the samples per pixel is conformant
+    let samples_per_px: u8 = nr_segments / bytes_per_pixel;
+    match samples_per_px {
+        1 => {},
+        3 => {},
+        _ => return err_invalid_nr_samples
+    }
+
+    // Watch for overflow here; u32 * u32 -> u64
+    let expected_length = usize::try_from(
+        px_per_sample * u32::from(bytes_per_pixel * samples_per_px)
+    ).unwrap();
+
+    // Pre-allocate a vector for the decoded frame
+    let mut frame = vec![0u8; expected_length];
+
+    /*
+    Example
+    -------
+    RLE encoded data is ordered like this (for 16-bit, 3 sample):
+      Segment: 1     | 2     | 3     | 4     | 5     | 6
+               R MSB | R LSB | G MSB | G LSB | B MSB | B LSB
+
+    A segment contains only the MSB or LSB parts of all the sample pixels
+
+    To minimise the amount of array manipulation later, and to make things
+    faster we interleave each segment in a manner consistent with a planar
+    configuration of 1 (and maintain big endian byte ordering):
+      All red samples             | All green samples           | All blue
+      Pxl 1   Pxl 2   ... Pxl N   | Pxl 1   Pxl 2   ... Pxl N   | ...
+      MSB LSB MSB LSB ... MSB LSB | MSB LSB MSB LSB ... MSB LSB | ...
+    */
+
+    // Decode each segment and place it into the vector
+    // ------------------------------------------------
+    let pps = usize::try_from(px_per_sample).unwrap();
+    // Concatenate sample planes into a frame
+    for sample in 0..samples_per_px {  // 0 or (0, 1, 2)
+        // Sample offset
+        let so = usize::from(sample * bytes_per_pixel) * pps;
+
+        // Interleave the segments into a sample plane
+        for byte_offset in 0..bytes_per_pixel {  // 0, [1, 2, 3, ..., 7]
+            // idx should be in range [0, 23], but max is 15
+            let idx = usize::from(sample * bytes_per_pixel + byte_offset);
+
+            // offsets[idx] is u32 -> usize not guaranteed
+            let start = usize::try_from(offsets[idx]).unwrap();
+            let end = usize::try_from(offsets[idx + 1]).unwrap();
+
+            // Decode the segment into the frame
+            _decode_segment_plane(
+                <&[u8]>::try_from(&enc[start..end]).unwrap(),
+                &mut frame,
+                usize::from(bytes_per_pixel),
+                usize::from(byte_offset) + so
+            )?;
+        }
+    }
+
+    Ok(frame)
+}
+
+
+// About twice as slow as _decode_frame
+fn _decode_frame_alt(
+    enc: &[u8], px_per_sample: u32, bits_per_px: u8
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    /* Return the decoded frame.
+
+    Parameters
+    ----------
+    enc
+        The RLE encoded frame.
+    px_per_sample
+        The number of pixels per sample (rows x columns), maximum (2^32 - 1).
+    bits_per_px
+        The number of bits per pixel, should be a multiple of 8 and no larger than 64.
+    */
+
+    // Pre-define our errors for neatness
+    let err_bits_zero = Err(
+        String::from("The 'Bits Allocated' value must be greater than 0").into(),
+    );
+    let err_bits_not_octal = Err(
+        String::from("The 'Bits Allocated' value must be a multiple of 8").into(),
+    );
+    let err_invalid_bytes = Err(
+        String::from("A 'Bits Allocated' value greater than 64 is not supported").into()
+    );
+    let err_invalid_offset = Err(
+        String::from("Invalid segment offset found in the RLE header").into()
+    );
+    let err_insufficient_data = Err(
+        String::from("Frame is not long enough to contain RLE encoded data").into()
+    );
+    let err_invalid_nr_samples = Err(
+        String::from("The 'Samples Per Pixel' must be 1 or 3").into()
+    );
     let err_segment_length = Err(
         String::from("The decoded segment length does not match the expected length").into()
     );
@@ -251,6 +400,69 @@ fn _decode_frame(
     }
 
     Ok(frame)
+}
+
+
+fn _decode_segment_plane(
+    enc: &[u8], plane: &mut Vec<u8>, bpp: usize, initial_offset: usize
+) -> Result<(), Box<dyn Error>> {
+    /* Decode an RLE segment directly into a plane.
+
+    Parameters
+    ----------
+    enc
+        The encoded segment.
+    plane
+        The Vec<u8> for the decoded plane.
+    bpp
+        The number of bytes per pixel.
+    initial_offset
+        The initial frame offset where the first sample value will be placed.
+    */
+    let mut idx = initial_offset;
+    let mut pos = 0;
+    let mut header_byte: usize;
+    let max_offset = enc.len() - 1;
+    let err = Err(
+        String::from(
+            "The end of the data was reached before the segment was \
+            completely decoded"
+        ).into()
+    );
+
+    loop {
+        // `header_byte` is equivalent to N in the DICOM Standard
+        // usize is at least u8
+        header_byte = usize::from(enc[pos]);
+        pos += 1;
+        if header_byte > 128 {
+            if pos > max_offset {
+                return err
+            }
+            // Extend by copying the next byte (-N + 1) times
+            // however since using uint8 instead of int8 this will be
+            // (256 - N + 1) times
+            for _ in 0..257 - header_byte {
+                plane[idx] = enc[pos];
+                idx += bpp;
+            }
+            pos += 1;
+        } else if header_byte < 128 {
+            if (pos + header_byte) > max_offset {
+                return err
+            }
+            // Extend by literally copying the next (N + 1) bytes
+            for ii in pos..(pos + header_byte + 1) {
+                plane[idx] = enc[ii];
+                idx += bpp;
+            }
+            pos += header_byte + 1;
+        } // header_byte == 128 is noop
+
+        if pos >= max_offset {
+            return Ok(())
+        }
+    }
 }
 
 

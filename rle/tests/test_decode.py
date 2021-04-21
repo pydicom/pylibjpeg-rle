@@ -472,7 +472,7 @@ class TestDecodeFrame:
         ds = INDEX['MR_small_RLE.dcm']['ds']
         # 100 x 100, 32 bit, pr0
         #ds = INDEX["SC_rgb_rle_32bit.dcm"]['ds']
-        print(ds[0x00280000:0x00300000])
+        #print(ds[0x00280000:0x00300000])
         ref = ds.pixel_array
 
         frame_gen = generate_pixel_data_frame(ds.PixelData)
@@ -491,7 +491,7 @@ class TestDecodeFrame:
         dtype = pixel_dtype(ds).newbyteorder('>')
         arr = np.frombuffer(frame, dtype=dtype)
         arr = reshape_pixel_array(ds, arr)
-        print(arr, arr.shape)
+        #print(arr, arr.shape)
 
         import matplotlib.pyplot as plt
         fig, (ax1, ax2) = plt.subplots(1, 2)
