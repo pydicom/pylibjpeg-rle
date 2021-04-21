@@ -466,25 +466,32 @@ class TestNumpy_RLEHandler:
 class TestDecodeFrame:
     def test_one(self):
         # 2 segments, (64, 1948)
-        ds = INDEX['MR_small_RLE.dcm']['ds']
+        #ds = INDEX['MR_small_RLE.dcm']['ds']
+
+        # 100 x 100, 32 bit, pr0
+        ds = INDEX["SC_rgb_rle_32bit.dcm"]['ds']
         print(ds[0x00280000:0x00300000])
+        ref = ds.pixel_array
+
+        #ds = INDEX['OBXXXX1A_rle.dcm']['ds']
         frame_gen = generate_pixel_data_frame(ds.PixelData)
         frame = next(frame_gen)
 
-        offsets = _parse_rle_header(frame[:64])
-        print(offsets)
+        #offsets = _parse_rle_header(frame[:64])
+        #print(offsets)
 
-        result = decode_segment(frame[offsets[0]:offsets[1]])
-        print(result[:20], len(result))
+        #result = decode_segment(frame[offsets[0]:offsets[1]])
+        #print(result[:20], len(result))
 
         px_per_sample = ds.Rows * ds.Columns
         bits_per_px = ds.BitsAllocated
-        print(ds.BitsAllocated)
+        #print(ds.BitsAllocated)
         #print(type(frame))
         #frame = b'\x00'
         frame = decode_frame(frame, px_per_sample, bits_per_px)
         print(type(frame), len(frame), frame[:20])
 
+        #ds.NumberOfFrames = 1
         dtype = pixel_dtype(ds).newbyteorder('>')
         arr = np.frombuffer(frame, dtype=dtype)
         arr = reshape_pixel_array(ds, arr)
@@ -492,7 +499,7 @@ class TestDecodeFrame:
 
         import matplotlib.pyplot as plt
         fig, (ax1, ax2) = plt.subplots(1, 2)
-        ax1.imshow(ds.pixel_array)
+        ax1.imshow(ref)
         ax2.imshow(arr)
         plt.show()
 

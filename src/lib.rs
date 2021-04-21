@@ -225,6 +225,8 @@ fn _decode_frame(
     // ------------------------------------------------
     // Concatenate sample planes into a frame
     for sample in 0..samples_per_px {  // 0 or (0, 1, 2)
+        // Sample offset
+        let so = usize::from(sample * bytes_per_pixel) * px_per_sample as usize;
 
         // Interleave the segments into a sample plane
         for byte_offset in 0..bytes_per_pixel {  // 0, [1, 2, 3, ..., 7]
@@ -251,7 +253,7 @@ fn _decode_frame(
 
             // Interleave segment into frame
             let bpp = usize::from(bytes_per_pixel);
-            let bo = usize::from(byte_offset);
+            let bo = usize::from(byte_offset) + so;
             for (ii, v) in segment.iter().enumerate() {
                 frame[ii * bpp + bo] = *v;
             }
