@@ -127,6 +127,9 @@ fn _decode_frame(
     let err_invalid_nr_samples = Err(
         String::from("The 'Samples Per Pixel' must be 1 or 3").into()
     );
+    let err_segment_length = Err(
+        String::from("The decoded segment length does not match the expected length").into()
+    );
 
     // Ensure we have a valid bits/px value
     match bits_per_px {
@@ -228,12 +231,13 @@ fn _decode_frame(
             let end = usize::try_from(offsets[idx + 1]).unwrap();
 
             // Decode the segment into the frame
-            _decode_segment_plane(
+            let len = _decode_segment_frame(
                 <&[u8]>::try_from(&enc[start..end]).unwrap(),
                 &mut frame,
                 usize::from(bytes_per_pixel),
                 usize::from(byte_offset) + so
             )?;
+            if len != pps { return err_segment_length }
         }
     }
 
@@ -403,22 +407,28 @@ fn _decode_frame_alt(
 }
 
 
-fn _decode_segment_plane(
-    enc: &[u8], plane: &mut Vec<u8>, bpp: usize, initial_offset: usize
-) -> Result<(), Box<dyn Error>> {
-    /* Decode an RLE segment directly into a plane.
+fn _decode_segment_frame(
+    enc: &[u8], frame: &mut Vec<u8>, bpp: usize, initial_offset: usize
+) -> Result<usize, Box<dyn Error>> {
+    /* Decode an RLE segment directly into a frame.
 
     Parameters
     ----------
     enc
         The encoded segment.
-    plane
-        The Vec<u8> for the decoded plane.
+    frame
+        The Vec<u8> for the decoded frame.
     bpp
         The number of bytes per pixel.
     initial_offset
         The initial frame offset where the first sample value will be placed.
+
+    Returns
+    -------
+    len
+        The length of the decoded segment.
     */
+    let mut len = 0;  // Number of decoded bytes in the segment
     let mut idx = initial_offset;
     let mut pos = 0;
     let mut header_byte: usize;
@@ -443,8 +453,9 @@ fn _decode_segment_plane(
             // however since using uint8 instead of int8 this will be
             // (256 - N + 1) times
             for _ in 0..257 - header_byte {
-                plane[idx] = enc[pos];
+                frame[idx] = enc[pos];
                 idx += bpp;
+                len += 1;
             }
             pos += 1;
         } else if header_byte < 128 {
@@ -453,14 +464,15 @@ fn _decode_segment_plane(
             }
             // Extend by literally copying the next (N + 1) bytes
             for ii in pos..(pos + header_byte + 1) {
-                plane[idx] = enc[ii];
+                frame[idx] = enc[ii];
                 idx += bpp;
+                len += 1;
             }
             pos += header_byte + 1;
         } // header_byte == 128 is noop
 
         if pos >= max_offset {
-            return Ok(())
+            return Ok(len)
         }
     }
 }
