@@ -17,8 +17,8 @@ Make sure [Python](https://www.python.org/), [Git](https://git-scm.com/) and
 [Microsoft's C++ Build Tools](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16).
 ```bash
 git clone https://github.com/pydicom/pylibjpeg-rle
-python -m pip install setuptools-rust
-python -m pip install pylibjpeg-rle
+cd pylibjpeg-rle
+python -m setup.py develop
 ```
 
 ### Supported Transfer Syntaxes
@@ -30,7 +30,7 @@ python -m pip install pylibjpeg-rle
 ### Benchmarks
 #### Decoding
 
-Time per 1000 decodes of the Pixel Data, pydicom's NumPy RLE handler vs. pylibjpeg-rle
+Time per 1000 decodes, pydicom's NumPy RLE handler vs. pylibjpeg-rle
 
 | Dataset                     | Pixels  | Bytes   | NumPy  | pylibjpeg-rle |
 | ---                         | ---     | ---     | ---    | ---           |
@@ -51,7 +51,7 @@ Time per 1000 decodes of the Pixel Data, pydicom's NumPy RLE handler vs. pylibjp
 #### With pylibjpeg and pydicom
 
 Because pydicom defaults to the NumPy RLE decoder, you must specify the use
-of pylibjpeg as the RLE decoder you want to use when decompressing the
+of pylibjpeg when decompressing:
 *Pixel Data*:
 ```python
 from pydicom import dcmread
@@ -69,7 +69,7 @@ from rle import pixel_array, generate_frames
 # Return the entire Pixel Data as an ndarray
 arr = pixel_array(ds)
 
-# Generator function that only processes 1 frame at a time
+# Generator function that only processes 1 frame at a time,
 # may help reduce memory usage when dealing with large Pixel Data
 for arr in generate_frames(ds):
     print(arr.shape)

@@ -50,7 +50,9 @@ jobs:
         python --version
         python -m cibuildwheel --output-dir dist
       env:
-          CIBW_BEFORE_ALL: curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y
+          CIBW_BEFORE_ALL: |
+            curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y
+            rustup target add i686-pc-windows-msvc
           CIBW_ENVIRONMENT: 'PATH="$PATH:$HOME/.cargo/bin"'
 
     - uses: actions/upload-artifact@v2
