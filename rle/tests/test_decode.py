@@ -359,6 +359,8 @@ class TestDecodeFrame_Datasets:
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
         assert (600, 800) == arr.shape
+        assert '>u1' == arr.dtype
+
         assert 244 == arr[0].min() == arr[0].max()
         assert (1, 246, 1) == tuple(arr[300, 491:494])
         assert 0 == arr[-1].min() == arr[-1].max()
@@ -378,6 +380,8 @@ class TestDecodeFrame_Datasets:
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
         assert (2, 600, 800) == arr.shape
+        assert '>u1' == arr.dtype
+
         assert 244 == arr[0, 0].min() == arr[0, 0].max()
         assert (1, 246, 1) == tuple(arr[0, 300, 491:494])
         assert 0 == arr[0, -1].min() == arr[0, -1].max()
@@ -399,6 +403,9 @@ class TestDecodeFrame_Datasets:
 
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
+        assert (100, 100, 3) == arr.shape
+        assert '>u1' == arr.dtype
+
         assert (255, 0, 0) == tuple(arr[5, 50, :])
         assert (255, 128, 128) == tuple(arr[15, 50, :])
         assert (0, 255, 0) == tuple(arr[25, 50, :])
@@ -424,6 +431,8 @@ class TestDecodeFrame_Datasets:
 
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
+        assert (2, 100, 100, 3) == arr.shape
+        assert '>u1' == arr.dtype
 
         # Frame 1
         frame = arr[0]
@@ -456,6 +465,7 @@ class TestDecodeFrame_Datasets:
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
         assert (64, 64) == arr.shape
+        assert '>i2' == arr.dtype
 
         assert (422, 319, 361) == tuple(arr[0, 31:34])
         assert (366, 363, 322) == tuple(arr[31, :3])
@@ -476,6 +486,7 @@ class TestDecodeFrame_Datasets:
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
         assert (10, 64, 64) == arr.shape
+        assert '>u2' == arr.dtype
 
         # Frame 1
         assert (206, 197, 159) == tuple(arr[0, 0, 31:34])
@@ -506,6 +517,8 @@ class TestDecodeFrame_Datasets:
 
         assert arr.flags.writeable
         assert np.array_equal(ds.pixel_array, ref)
+        assert (100, 100, 3) == arr.shape
+        assert '>u2' == arr.dtype
 
         assert (65535, 0, 0) == tuple(arr[5, 50, :])
         assert (65535, 32896, 32896) == tuple(arr[15, 50, :])
@@ -532,6 +545,8 @@ class TestDecodeFrame_Datasets:
 
         assert arr.flags.writeable
         assert np.array_equal(ds.pixel_array, ref)
+        assert (2, 100, 100, 3) == arr.shape
+        assert '>u2' == arr.dtype
 
         # Frame 1
         frame = arr[0]
@@ -560,10 +575,11 @@ class TestDecodeFrame_Datasets:
 
         ref = ds.pixel_array
         arr = pixel_array(ds)
+        assert (10, 10) == arr.shape
+        assert '>u4' == arr.dtype
 
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
-        assert (10, 10) == arr.shape
         assert (1249000, 1249000, 1250000) == tuple(arr[0, :3])
         assert (1031000, 1029000, 1027000) == tuple(arr[4, 3:6])
         assert (803000, 801000, 798000) == tuple(arr[-1, -3:])
@@ -583,6 +599,7 @@ class TestDecodeFrame_Datasets:
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
         assert (15, 10, 10) == arr.shape
+        assert '>u4' == arr.dtype
 
         # Frame 1
         assert (1249000, 1249000, 1250000) == tuple(arr[0, 0, :3])
@@ -610,8 +627,10 @@ class TestDecodeFrame_Datasets:
 
         ref = ds.pixel_array
         arr = pixel_array(ds)
-
         assert arr.flags.writeable
+        assert (100, 100, 3) == arr.shape
+        assert '>u4' == arr.dtype
+
         assert np.array_equal(ds.pixel_array, ref)
         assert (4294967295, 0, 0) == tuple(arr[5, 50, :])
         assert (4294967295, 2155905152, 2155905152) == tuple(arr[15, 50, :])
@@ -635,8 +654,10 @@ class TestDecodeFrame_Datasets:
 
         ref = ds.pixel_array
         arr = pixel_array(ds)
-
         assert arr.flags.writeable
+        assert (2, 100, 100, 3) == arr.shape
+        assert '>u4' == arr.dtype
+
         assert np.array_equal(ds.pixel_array, ref)
 
         # Frame 1

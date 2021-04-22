@@ -34,19 +34,19 @@ class TimeDecodePixelData_NumpyHandler:
     def setup(self):
         self.no_runs = 1000
 
-    def time_u8_1s_1f(self):
+    def time_u08_1s_1f(self):
         for _ in range(self.no_runs):
             reshape_pixel_array(u8_1s_1f, get_pixeldata(u8_1s_1f))
 
-    def time_u8_1s_2f(self):
+    def time_u08_1s_2f(self):
         for _ in range(self.no_runs):
             reshape_pixel_array(u8_1s_2f, get_pixeldata(u8_1s_2f))
 
-    def time_u8_3s_1f(self):
+    def time_u08_3s_1f(self):
         for _ in range(self.no_runs):
             reshape_pixel_array(u8_3s_1f, get_pixeldata(u8_3s_1f))
 
-    def time_u8_3s_2f(self):
+    def time_u08_3s_2f(self):
         for _ in range(self.no_runs):
             reshape_pixel_array(u8_3s_2f, get_pixeldata(u8_3s_2f))
 
@@ -87,19 +87,19 @@ class TimeDecodePixelData_PyLJ:
     def setup(self):
         self.no_runs = 1000
 
-    def time_u8_1s_1f(self):
+    def time_u08_1s_1f(self):
         for _ in range(self.no_runs):
             pixel_array(u8_1s_1f)
 
-    def time_u8_1s_2f(self):
+    def time_u08_1s_2f(self):
         for _ in range(self.no_runs):
             pixel_array(u8_1s_2f)
 
-    def time_u8_3s_1f(self):
+    def time_u08_3s_1f(self):
         for _ in range(self.no_runs):
             pixel_array(u8_3s_1f)
 
-    def time_u8_3s_2f(self):
+    def time_u08_3s_2f(self):
         for _ in range(self.no_runs):
             pixel_array(u8_3s_2f)
 
