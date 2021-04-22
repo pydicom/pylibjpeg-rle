@@ -464,16 +464,142 @@ class TestNumpy_RLEHandler:
         assert np.array_equal((2**ds.BitsAllocated - 1) - arr[1], arr[0])
 
 
-@pytest.mark.skipif(not HAVE_PYDICOM, reason="No pydicom")
 class TestDecodeFrame:
+    """Tests for rle._rle.decode_frame()."""
+    def as_bytes(self, offsets):
+        d = [len(offsets)] + offsets
+        d += [0] * (16 - len(d))
+        return pack("<16l", *d)
+
+    def test_bits_allocated_zero_raises(self):
+        """Test exception raised for BitsAllocated 0."""
+        msg = (
+            r"The \(0028,0010\) 'Bits Allocated' value must be greater than 0"
+        )
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(b'\x00\x00\x00\x00', 1, 0)
+
+    def test_bits_allocated_not_octal_raises(self):
+        """Test exception raised for BitsAllocated not a multiple of 8."""
+        msg = (
+            r"The \(0028,0010\) 'Bits Allocated' value must be a multiple of 8"
+        )
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(b'\x00\x00\x00\x00', 1, 12)
+
+    def test_bits_allocated_large_raises(self):
+        """Test exception raised for BitsAllocated greater than 64."""
+        msg = (
+            r"A \(0028,0010\) 'Bits Allocated' value greater than "
+            r"64 is not supported"
+        )
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(b'\x00\x00\x00\x00', 1, 72)
+
+    def test_insufficient_data_for_header_raises(self):
+        """Test exception raised if insufficient data."""
+        msg = r"Frame is not long enough to contain RLE encoded data"
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(b'\x00\x00\x00\x00', 1, 8)
+
+    def test_no_data_raises(self):
+        """Test exception raised if no data."""
+        msg = r"Frame is not long enough to contain RLE encoded data"
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(b'', 1, 8)
+
+    def test_invalid_first_offset_raises(self):
+        """Test exception if invalid first offset."""
+        msg = r"Invalid segment offset found in the RLE header"
+        d = self.as_bytes([0])
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(d, 1, 8)
+
+    def test_insufficient_data_for_offsets_raises(self):
+        """Test exception if invalid first offset."""
+        msg = r"Invalid segment offset found in the RLE header"
+        # Offset 64 with length 64
+        d = self.as_bytes([64])
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(d, 1, 8)
+
+    def test_non_increasing_offsets_raises(self):
+        """Test exception if offsets not in increasing order."""
+        msg = r"Invalid segment offset found in the RLE header"
+        d = self.as_bytes([64, 70, 68])
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(d, 1, 8)
+
+    def test_invalid_samples_px_raises(self):
+        """Test exception if samples per px not 1 or 3."""
+        msg = r"The \(0028,0002\) 'Samples Per Pixel' must be 1 or 3"
+        d = self.as_bytes([64, 70])
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(d + b'\x00' * 8, 1, 8)
+
+    def test_insufficient_frame_literal_raises(self):
+        """Test exception if frame not large enough to hold segment on lit."""
+        msg = (
+            r"The end of the frame was reached before the segment was "
+            r"completely decoded"
+        )
+        d = self.as_bytes([64])
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(d + b'\x00' * 8, 1, 8)
+
+    def test_insufficient_frame_copy_raises(self):
+        """Test exception if frame not large enough to hold segment on copy."""
+        msg = (
+            r"The end of the frame was reached before the segment was "
+            r"completely decoded"
+        )
+        d = self.as_bytes([64])
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(d + b'\xff\x00\x00', 1, 8)
+
+    def test_insufficient_segment_copy_raises(self):
+        """Test exception if insufficient segment data on copy."""
+        msg = (
+            r"The end of the data was reached before the segment was "
+            r"completely decoded"
+        )
+        d = self.as_bytes([64])
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(d + b'\xff', 8, 8)
+
+    def test_insufficient_segment_literal_raises(self):
+        """Test exception if insufficient segment data on literal."""
+        msg = (
+            r"The end of the data was reached before the segment was "
+            r"completely decoded"
+        )
+        d = self.as_bytes([64])
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(d + b'\x0a' * 8, 12, 8)
+
+    def test_decoded_segment_length_short(self):
+        """Test exception if decoded segment length invalid."""
+        msg = r"The decoded segment length does not match the expected length"
+        d = self.as_bytes([64])
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(d + b'\x00' * 8, 12, 8)
+
+    def test_decoded_segment_length_long(self):
+        """Test exception if decoded segment length invalid."""
+        msg = r"The decoded segment length does not match the expected length"
+        d = self.as_bytes([64, 72])
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(d + b'\x00' * 20, 8, 16)
+
+    @pytest.mark.skipif(not HAVE_PYDICOM, reason="No pydicom")
     def test_one(self):
         # 600 x 800, 8 bit, pr0
-        #ds = INDEX['OBXXXX1A_rle.dcm']['ds']
+        ds = INDEX['OBXXXX1A_rle.dcm']['ds']
         # 64 x 64, 16 bit, pr1
         #ds = INDEX['MR_small_RLE.dcm']['ds']
         # 100 x 100, 32 bit, pr0
         #ds = INDEX["SC_rgb_rle_32bit.dcm"]['ds']
-        ds = INDEX["SC_rgb_rle.dcm"]['ds']
+        #ds = INDEX["SC_rgb_rle.dcm"]['ds']
         #print(ds[0x00280000:0x00300000])
         ref = ds.pixel_array
 
@@ -486,23 +612,23 @@ class TestDecodeFrame:
         #result = decode_segment(frame[offsets[0]:offsets[1]])
         #print(result[:20], len(result))
 
-        #px_per_sample = ds.Rows * ds.Columns
-        #bits_per_px = ds.BitsAllocated
-        #frame = decode_frame(frame, px_per_sample, bits_per_px)
+        px_per_sample = ds.Rows * ds.Columns
+        bits_per_px = ds.BitsAllocated
+        frame = decode_frame(frame, px_per_sample, bits_per_px)
 
         #dtype = pixel_dtype(ds).newbyteorder('>')
         #arr = np.frombuffer(frame, dtype=dtype)
         #arr = reshape_pixel_array(ds, arr)
         #print(arr, arr.shape)
 
-        gen = generate_frames(ds)
-        arr = next(gen)
+        #gen = generate_frames(ds)
+        #arr = next(gen)
 
-        import matplotlib.pyplot as plt
-        fig, (ax1, ax2) = plt.subplots(1, 2)
-        ax1.imshow(ref)
-        ax2.imshow(arr)
-        plt.show()
+        #import matplotlib.pyplot as plt
+        #fig, (ax1, ax2) = plt.subplots(1, 2)
+        #ax1.imshow(ref)
+        #ax2.imshow(arr)
+        #plt.show()
 
 
 class TestDecodeSegment:

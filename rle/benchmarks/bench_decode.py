@@ -21,8 +21,8 @@ from rle._rle import decode_segment, decode_frame, parse_header
 
 if __name__ == "__main__":
     INDEX = get_indexed_datasets('1.2.840.10008.1.2.5')
-    #ds = INDEX['OBXXXX1A_rle.dcm']['ds']
-    ds = INDEX["SC_rgb_rle_32bit.dcm"]['ds']
+    ds = INDEX['OBXXXX1A_rle.dcm']['ds']
+    #ds = INDEX["SC_rgb_rle_32bit.dcm"]['ds']
 
     nr_runs = 1000
 
