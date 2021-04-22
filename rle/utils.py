@@ -14,7 +14,7 @@ def decode_pixel_data(stream: bytes, ds: "Dataset") -> "np.ndarray":
     Parameters
     ----------
     stream : bytes
-        The contents of the dataset's *Pixel Data*.
+        The image frame to be decoded.
     ds : pydicom.dataset.Dataset
         A :class:`~pydicom.dataset.Dataset` containing the group ``0x0028``
         elements corresponding to the *Pixel Data*.
@@ -22,7 +22,7 @@ def decode_pixel_data(stream: bytes, ds: "Dataset") -> "np.ndarray":
     Returns
     -------
     numpy.ndarray
-        A 1D array of ``numpy.uint8`` containing the decoded image data,
+        A 1D array of ``numpy.uint8`` containing the decoded frame data,
         with big-endian encoding and planar configuration 1.
 
     Raises
@@ -30,27 +30,10 @@ def decode_pixel_data(stream: bytes, ds: "Dataset") -> "np.ndarray":
     ValueError
         If the decoding failed.
     """
-    from pydicom.encaps import generate_pixel_data_frame
-    from pydicom.pixel_data_handlers.util import get_expected_length
-    from pydicom.uid import RLELossless
-
-    nr_frames = getattr(ds, "NumberOfFrames", 1)
-    r, c = ds.Rows, ds.Columns
-    bpp = ds.BitsAllocated
-
-    expected_len = get_expected_length(ds, 'bytes')
-    frame_len = expected_len // getattr(ds, "NumberOfFrames", 1)
-    # Empty destination array for our decoded pixel data
-    arr = np.empty(expected_len, dtype='uint8')
-
-    generate_frames = generate_pixel_data_frame(ds.PixelData, nr_frames)
-    generate_offsets = range(0, expected_len, frame_len)
-    for frame, offset in zip(generate_frames, generate_offsets):
-        arr[offset:offset + frame_len] = np.frombuffer(
-            decode_frame(frame, r * c, bpp), dtype='uint8'
-        )
-
-    return arr
+    return np.frombuffer(
+        decode_frame(stream, ds.Rows * ds.Columns, ds.BitsAllocated),
+        dtype='uint8'
+    )
 
 
 def generate_frames(
