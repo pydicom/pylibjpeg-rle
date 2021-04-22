@@ -61,6 +61,9 @@ setup(
     python_requires = ">=3.6",
     setup_requires = ['setuptools>=18.0', 'setuptools-rust'],
     install_requires = ["numpy"],
+    extras_require = {
+        'tests': ["pytest", "pydicom", "numpy"]
+    },
     rust_extensions = [RustExtension('rle._rle', binding=Binding.PyO3)],
     # Plugin registrations
     entry_points={

@@ -767,3 +767,12 @@ class TestGenerateFrames:
         gen = generate_frames(ds)
         with pytest.raises(AttributeError, match=msg):
             next(gen)
+
+    def test_generator(self):
+        ds = deepcopy(INDEX["OBXXXX1A_rle.dcm"]['ds'])
+
+        gen = generate_frames(ds, reshape=True)
+        arr = next(gen)
+        assert (600, 800) == arr.shape
+        with pytest.raises(StopIteration):
+            next(gen)
