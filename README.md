@@ -1,7 +1,7 @@
 
 ## pylibjpeg-rle
 
-A fast DICOM RLE decoding plugin for pylibjpeg, written in Rust with a Python 3.6+ wrapper.
+A fast DICOM ([PackBits](https://en.wikipedia.org/wiki/PackBits)) RLE plugin for [pylibjpeg](https://github.com/pydicom/pylibjpeg) RLE decoding plugin for pylibjpeg, written in Rust with a Python 3.6+ wrapper.
 
 Linux, OSX and Windows are all supported.
 
@@ -22,10 +22,10 @@ python -m setup.py develop
 ```
 
 ### Supported Transfer Syntaxes
-#### Decoding
-| UID                 | Description  |
-| ---                 | ---          |
-| 1.2.840.10008.1.2.5 | RLE Lossless |
+
+| UID                 | Description  | Decoding | Encoding |
+| ---                 | ---          | ---      | ---      |
+| 1.2.840.10008.1.2.5 | RLE Lossless | Yes      | No       |
 
 ### Benchmarks
 #### Decoding
@@ -48,10 +48,11 @@ Time per 1000 decodes, pydicom's NumPy RLE handler vs. pylibjpeg-rle
 | SC_rgb_rle_32bit_2frame.dcm |  20,000 | 240,000 | 1.03 s |        0.28 s |
 
 ### Usage
-#### With pylibjpeg and pydicom
+#### Decoding
+##### With pylibjpeg
 
 Because pydicom defaults to the NumPy RLE decoder, you must specify the use
-of pylibjpeg when decompressing:
+of pylibjpeg when decompressing (**note: requires pydicom v2.2+**):
 *Pixel Data*:
 ```python
 from pydicom import dcmread
@@ -62,6 +63,7 @@ ds.decompress("pylibjpeg")
 arr = ds.pixel_array
 ```
 
+#### Standalone with pydicom
 Alternatively you can use the included functions to decode a given dataset:
 ```python
 from rle import pixel_array, generate_frames

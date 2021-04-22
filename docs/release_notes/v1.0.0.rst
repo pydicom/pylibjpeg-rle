@@ -1,0 +1,11 @@
+.. _v1.0.0:
+
+1.0.0
+=====
+
+Enhancements
+............
+
+* Initial release
+* Added support for decoding *RLE Lossless* encoded *Pixel Data*
+* Added support for use of a plugin with pylibjpeg
