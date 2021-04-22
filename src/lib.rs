@@ -415,7 +415,6 @@ fn _decode_segment_into_frame(
     len
         The length of the decoded segment.
     */
-    //let mut len = 0u32;  // Number of decoded bytes in the segment
     let mut idx = initial_offset;
     let mut pos = 0;
     let mut header_byte: usize;
@@ -446,7 +445,6 @@ fn _decode_segment_into_frame(
             // (256 - N + 1) times
             op_len = 257 - header_byte;
             // Check we have enough encoded data and remaining frame
-            //println!("Copy i:{} h:{} o:{} m:{}", idx, header_byte, op_len, max_frame);
             if (pos > max_offset) || (idx + op_len) > max_frame {
                 match pos > max_offset {
                     true => return err_eod,
@@ -463,7 +461,6 @@ fn _decode_segment_into_frame(
             // Extend by literally copying the next (N + 1) bytes
             op_len = header_byte + 1;
             // Check we have enough encoded data and remaining frame
-            //println!("Literal i:{} h:{} o:{} m:{}", idx, header_byte, op_len, max_frame);
             if ((pos + header_byte) > max_offset) || (idx + op_len > max_frame) {
                 match (pos + header_byte) > max_offset {
                     true => return err_eod,
