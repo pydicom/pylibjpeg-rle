@@ -60,7 +60,7 @@ setup(
     zip_safe = False,
     python_requires = ">=3.6",
     setup_requires = ['setuptools>=18.0', 'setuptools-rust'],
-    install_requires = [],
+    install_requires = ["numpy"],
     rust_extensions = [RustExtension('rle._rle', binding=Binding.PyO3)],
     # Plugin registrations
     entry_points={

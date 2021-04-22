@@ -446,6 +446,7 @@ fn _decode_segment_into_frame(
             // (256 - N + 1) times
             op_len = 257 - header_byte;
             // Check we have enough encoded data and remaining frame
+            //println!("Copy i:{} h:{} o:{} m:{}", idx, header_byte, op_len, max_frame);
             if (pos > max_offset) || (idx + op_len) > max_frame {
                 match pos > max_offset {
                     true => return err_eod,
@@ -460,8 +461,9 @@ fn _decode_segment_into_frame(
             pos += 1;
         } else if header_byte < 128 {
             // Extend by literally copying the next (N + 1) bytes
-            op_len = pos + header_byte + 1;
+            op_len = header_byte + 1;
             // Check we have enough encoded data and remaining frame
+            //println!("Literal i:{} h:{} o:{} m:{}", idx, header_byte, op_len, max_frame);
             if ((pos + header_byte) > max_offset) || (idx + op_len > max_frame) {
                 match (pos + header_byte) > max_offset {
                     true => return err_eod,
@@ -469,7 +471,7 @@ fn _decode_segment_into_frame(
                 }
             }
 
-            for ii in pos..op_len {
+            for ii in pos..pos + op_len {
                 frame[idx] = enc[ii];
                 idx += bpp;
             }

@@ -1,6 +1,8 @@
 """Utility functions."""
 
 
+import numpy as np
+
 from rle._rle import decode_frame, decode_segment, parse_header
 
 
@@ -150,13 +152,14 @@ def pixel_array(ds: "Dataset") -> "np.ndarray":
         the dataset.
     """
     from pydicom.pixel_data_handlers.util import (
-        get_expected_length, reshape_pixel_array
+        get_expected_length, reshape_pixel_array, pixel_dtype
     )
 
     expected_len = get_expected_length(ds, 'pixels')
     frame_len = expected_len // getattr(ds, "NumberOfFrames", 1)
     # Empty destination array for our decoded pixel data
-    arr = np.empty(expected_len, pixel_dtype(ds))
+    dtype = pixel_dtype(ds).newbyteorder('>')
+    arr = np.empty(expected_len, dtype)
 
     generate_offsets = range(0, expected_len, frame_len)
     for frame, offset in zip(generate_frames(ds, False), generate_offsets):
