@@ -1,9 +1,9 @@
 
 ## pylibjpeg-rle
 
-A fast DICOM ([PackBits](https://en.wikipedia.org/wiki/PackBits)) RLE plugin for [pylibjpeg](https://github.com/pydicom/pylibjpeg) RLE decoding plugin for pylibjpeg, written in Rust with a Python 3.6+ wrapper.
+A fast DICOM ([PackBits](https://en.wikipedia.org/wiki/PackBits)) RLE plugin for [pylibjpeg](https://github.com/pydicom/pylibjpeg), written in Rust with a Python 3.6+ wrapper.
 
-Linux, OSX and Windows are all supported.
+Linux, MacOS and Windows are all supported.
 
 ### Installation
 #### Installing the current release
@@ -52,8 +52,7 @@ Time per 1000 decodes, pydicom's NumPy RLE handler vs. pylibjpeg-rle
 ##### With pylibjpeg
 
 Because pydicom defaults to the NumPy RLE decoder, you must specify the use
-of pylibjpeg when decompressing (**note: requires pydicom v2.2+**):
-*Pixel Data*:
+of pylibjpeg when decompressing (**requires pydicom v2.2+**):
 ```python
 from pydicom import dcmread
 from pydicom.data import get_testdata_file
