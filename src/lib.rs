@@ -1,7 +1,3 @@
-// https://pyo3.rs/v0.13.2/conversions/tables.html
-// bytes -> &[u8] or Vec<u8>
-// bytearray -> Vec<u8>
-// list[T] -> Vec<T>
 
 use std::error::Error;
 use std::convert::TryFrom;
@@ -11,6 +7,8 @@ use pyo3::wrap_pyfunction;
 use pyo3::types::{PyBytes, PyByteArray};
 use pyo3::exceptions::{PyValueError};
 
+
+// RLE Decoding
 
 #[pyfunction]
 fn parse_header(enc: &[u8]) -> PyResult<Vec<u32>> {
@@ -554,11 +552,86 @@ fn _decode_segment(enc: &[u8], out: &mut Vec<u8>) -> Result<(), Box<dyn Error>> 
 }
 
 
+// RLE Encoding
+#[pyfunction]
+fn encode_frame() {}
+
+
+fn _encode_segment() -> Result<(), Box<dyn Error>> {
+    Ok(())
+}
+
+
+fn _encode_row(s: &[u8]) -> Result<(Vec<u8>), Box<dyn Error>> {
+    /* Return a numpy array as an RLE encoded bytearray.
+
+    Parameters
+    ----------
+    s
+        The bytes to be encoded.
+
+    Returns
+    -------
+    Vec<u8>
+        The RLE encoded row, following the format specified by the DICOM
+        Standard, Part 5, :dcm:`Annex G<part05/chapter_G.html>`
+
+    Notes
+    -----
+    * 2-byte repeat runs are always encoded as Replicate Runs rather than
+      only when not preceeded by a Literal Run as suggested by the Standard.
+    */
+    // Read ahead and find first non-identical value
+
+    // out = []
+    // out_append = out.append
+    // out_extend = out.extend
+    //
+    // literal = []
+    // for key, group in groupby(arr.astype('uint8').tolist()):
+    //     group = list(group)
+    //     if len(group) == 1:
+    //         literal.append(group[0])
+    //     else:
+    //         if literal:
+    //             # Literal runs
+    //             for ii in range(0, len(literal), 128):
+    //                 _run = literal[ii:ii + 128]
+    //                 out_append(len(_run) - 1)
+    //                 out_extend(_run)
+    //
+    //             literal = []
+    //
+    //         # Replicate run
+    //         for ii in range(0, len(group), 128):
+    //             if len(group[ii:ii + 128]) > 1:
+    //                 # Replicate run
+    //                 out_append(257 - len(group[ii:ii + 128]))
+    //                 out_append(group[0])
+    //             else:
+    //                 # Literal run only if last replicate part is length 1
+    //                 out_append(0)
+    //                 out_append(group[0])
+    //
+    // # Final literal run if literal isn't followed by a replicate run
+    // for ii in range(0, len(literal), 128):
+    //     _run = literal[ii:ii + 128]
+    //     out_append(len(_run) - 1)
+    //     out_extend(_run)
+    //
+    // return pack('{}B'.format(len(out)), *out)
+
+    Ok(())
+}
+
+
 #[pymodule]
 fn _rle(_: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_header, m)?).unwrap();
     m.add_function(wrap_pyfunction!(decode_segment, m)?).unwrap();
     m.add_function(wrap_pyfunction!(decode_frame, m)?).unwrap();
+
+    m.add_function(wrap_pyfunction!(encode_frame, m)?).unwrap();
 
     Ok(())
 }
