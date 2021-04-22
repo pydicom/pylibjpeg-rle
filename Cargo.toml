@@ -1,0 +1,14 @@
+[package]
+name = "_rle"
+version = "1.0.0"
+authors = ["scaramallion <scaramallion@users.noreply.github.com>"]
+edition = "2018"
+
+
+[lib]
+name = "_rle"
+crate-type = ["cdylib"]
+
+
+[dependencies]
+pyo3 = { version = "0.13.1", features = ["extension-module"] }

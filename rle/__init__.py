@@ -1,3 +1,4 @@
 """Set package shortcuts."""
 
-from ._version import __version__
+from rle._version import __version__
+from rle.utils import pixel_array, generate_frames, decode_pixel_data

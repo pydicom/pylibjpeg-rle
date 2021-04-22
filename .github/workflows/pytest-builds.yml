@@ -1,0 +1,41 @@
+name: Run pytest
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.6, 3.7, 3.8, 3.9]
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install setuptools-rust pytest pydicom coverage pytest-cov
+        pip install git+https://github.com/pydicom/pylibjpeg-data
+        pip install -e .
+
+    - name: Test with pytest
+      env:
+        PYTHON_VERSION: ${{ matrix.python-version }}
+      run: |
+        pytest --cov rle
