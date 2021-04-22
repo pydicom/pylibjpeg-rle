@@ -52,7 +52,7 @@ Time per 1000 decodes, pydicom's NumPy RLE handler vs. pylibjpeg-rle
 ##### With pylibjpeg
 
 Because pydicom defaults to the NumPy RLE decoder, you must specify the use
-of pylibjpeg when decompressing (**requires pydicom v2.2+**):
+of pylibjpeg when decompressing:
 ```python
 from pydicom import dcmread
 from pydicom.data import get_testdata_file
