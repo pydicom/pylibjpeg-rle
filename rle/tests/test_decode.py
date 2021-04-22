@@ -1,21 +1,19 @@
 """Tests for decoding RLE data."""
 
 from struct import pack
-import timeit
-
-import pytest
 
 import numpy as np
+import pytest
 
 try:
     from pydicom import dcmread
-    import pydicom.config
-    from pydicom.data import get_testdata_file
     from pydicom.encaps import generate_pixel_data_frame
     from pydicom.pixel_data_handlers.rle_handler import (
         _parse_rle_header, _rle_decode_frame, _rle_decode_segment
     )
-    from pydicom.pixel_data_handlers.util import pixel_dtype, reshape_pixel_array
+    from pydicom.pixel_data_handlers.util import (
+        pixel_dtype, reshape_pixel_array
+    )
     from pydicom.uid import RLELossless
     HAVE_PYDICOM = True
 except ImportError:

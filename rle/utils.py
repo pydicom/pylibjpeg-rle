@@ -38,16 +38,16 @@ def decode_pixel_data(stream: bytes, ds: "Dataset") -> "np.ndarray":
     r, c = ds.Rows, ds.Columns
     bpp = ds.BitsAllocated
 
-    expected_len = get_expected_length(ds, 'pixels')
+    expected_len = get_expected_length(ds, 'bytes')
     frame_len = expected_len // getattr(ds, "NumberOfFrames", 1)
     # Empty destination array for our decoded pixel data
     arr = np.empty(expected_len, dtype='uint8')
 
-    generate_offsets = range(0, expected_len, frame_len)
     generate_frames = generate_pixel_data_frame(ds.PixelData, nr_frames)
+    generate_offsets = range(0, expected_len, frame_len)
     for frame, offset in zip(generate_frames, generate_offsets):
         arr[offset:offset + frame_len] = np.frombuffer(
-            decode_frame(frame, r * c, bpp)
+            decode_frame(frame, r * c, bpp), dtype='uint8'
         )
 
     return arr
