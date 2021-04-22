@@ -21,7 +21,7 @@ setup(
     name = 'pylibjpeg-rle',
     description = (
         "Python bindings for a fast RLE decoder, with a focus on use as a "
-        "plugin for for pylibjpeg"
+        "plugin for pylibjpeg"
     ),
     long_description = long_description,
     long_description_content_type = 'text/markdown',
@@ -62,7 +62,8 @@ setup(
     setup_requires = ['setuptools>=18.0', 'setuptools-rust'],
     install_requires = ["numpy"],
     extras_require = {
-        'tests': ["pytest", "pydicom", "numpy"]
+        'tests': ["pytest", "pydicom", "numpy"],
+        'benchmarks': ["pydicom", "numpy", "asv"],
     },
     rust_extensions = [RustExtension('rle._rle', binding=Binding.PyO3)],
     # Plugin registrations
