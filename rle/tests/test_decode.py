@@ -1,5 +1,6 @@
 """Tests for decoding RLE data."""
 
+from copy import deepcopy
 from struct import pack
 
 import numpy as np
@@ -741,3 +742,28 @@ class TestDecodeSegment:
         )
         with pytest.raises(ValueError, match=msg):
             decode_segment(b'\x01\x02')
+
+
+@pytest.mark.skipif(not HAVE_PYDICOM, reason="No pydicom")
+class TestGenerateFrames:
+    """Tests for utils.generate_frames()."""
+    def test_invalid_uid(self):
+        index = get_indexed_datasets('1.2.840.10008.1.2.1')
+        ds = index["CT_small.dcm"]['ds']
+
+        msg = r"Only RLE Lossless encoded pixel data encoded is supported"
+        gen = generate_frames(ds)
+        with pytest.raises(NotImplementedError, match=msg):
+            next(gen)
+
+    def test_missing_required(self):
+        ds = deepcopy(INDEX["OBXXXX1A_rle.dcm"]['ds'])
+        del ds.Rows
+
+        msg = (
+            "Unable to convert the pixel data as the following required "
+            "elements are missing from the dataset: Rows"
+        )
+        gen = generate_frames(ds)
+        with pytest.raises(AttributeError, match=msg):
+            next(gen)
