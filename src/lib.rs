@@ -559,17 +559,44 @@ fn encode_frame() {}
 
 
 fn _encode_segment() -> Result<(), Box<dyn Error>> {
+    // Each segment must be even length or padded to even length with noop byte
     Ok(())
 }
 
 
-fn _encode_row(s: &[u8]) -> Result<(Vec<u8>), Box<dyn Error>> {
+#[pyfunction]
+fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
+    /* Return RLE encoded Python bytes.
+
+    Parameters
+    ----------
+    src : bytes
+        The raw data to be encoded.
+
+    Returns
+    -------
+    bytes
+        The RLE encoded data.
+    */
+    // Be nice to make use of threading for row encoding
+    // The encoded row data
+    let mut dst: Vec<u8> = Vec::with_capacity(raw.len());
+    match _decode_segment(src, &mut dst) {
+        Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
+        Err(err) => return Err(PyValueError::new_err(err.to_string())),
+    }
+}
+
+
+fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
     /* Return a numpy array as an RLE encoded bytearray.
 
     Parameters
     ----------
-    s
-        The bytes to be encoded.
+    src
+        The data to be encoded
+    dst
+        The destination for the encoded data
 
     Returns
     -------
@@ -582,7 +609,86 @@ fn _encode_row(s: &[u8]) -> Result<(Vec<u8>), Box<dyn Error>> {
     * 2-byte repeat runs are always encoded as Replicate Runs rather than
       only when not preceeded by a Literal Run as suggested by the Standard.
     */
-    // Read ahead and find first non-identical value
+
+    // Reminders:
+    // * Each image row is encoded separately
+    // * Literal runs are a non-repetitive stream
+    // * Replicate runs are a repetitive stream
+    // * Maximum length of literal/replicate runs is 128 bytes
+
+    // Maximum length of a literal/replicate run
+    let MAX_RUN: u8 = 128;
+    // Track how long the current literal run is
+    let mut literal: i8 = 0;
+    // Track how long the current replicate run is
+    let mut replicate: i8 = 0;
+
+    let MAX_SRC = src.len();
+
+    let mut ii: usize = 0;
+    let mut previous: u8 = *src[ii];  // Initial value
+
+    // Check there is an initial value (or two)
+
+    loop {
+        ii += 1;
+        current = *src[ii];
+
+        println!(
+            "ii: {}, prev: {}, cur: {}, l: {}, r: {}",
+            ii, previous, current, literal, replicate
+        );
+
+        // While we still have data in src...
+        // For each item in src...
+
+        // Literal Run
+        // -----------
+        if current = previous {
+            if literal > 0 {
+                //
+            }
+        }
+        // if currently in literal run...
+        //   if the current value is still different to previous:
+        //     continue literal run
+        //   else
+        //     if literal > 2?:
+        //       write out literal
+        //       reset run
+        //     else:
+        //       switch to replicate
+        if literal == MAX_RUN {
+            // Write out run and reset
+            dst.push(MAX_RUN);  // Er..? Convert?
+            dst.extend(&src[a..b]);  // or something like that
+            literal = 0;
+            replicate = 0;
+        }
+
+        // Replicate Run
+        // -----------
+        // if currently in replicate run...
+        //   if the current value is the same as the previous value:
+        //     continue replicate run
+        //   else
+        //     if replicate > 2?;
+        //       write out run
+        //       reset
+        //     else:
+        //       switch to literal
+        if replicate == MAX_RUN {
+            // Write out run and reset
+            dst.push(MAX_RUN);  // Er..? Convert ...maybe 257 - 128?
+            dst.push(current);
+            literal = 0;
+            replicate = 0;
+        }
+        // else reset and start literal run
+        //   literal run
+
+        if ii = MAX_SRC { return Ok(()) }
+    }
 
     // out = []
     // out_append = out.append
@@ -632,6 +738,7 @@ fn _rle(_: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(decode_segment, m)?).unwrap();
     m.add_function(wrap_pyfunction!(decode_frame, m)?).unwrap();
 
+    m.add_function(wrap_pyfunction!(encode_row, m)?).unwrap();
     m.add_function(wrap_pyfunction!(encode_frame, m)?).unwrap();
 
     Ok(())
