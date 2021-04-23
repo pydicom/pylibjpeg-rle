@@ -248,151 +248,6 @@ fn _decode_frame(
 }
 
 
-// About twice as slow as _decode_frame
-fn _decode_frame_alt(
-    enc: &[u8], px_per_sample: u32, bits_per_px: u8
-) -> Result<Vec<u8>, Box<dyn Error>> {
-    /* Return the decoded frame.
-
-    Parameters
-    ----------
-    enc
-        The RLE encoded frame.
-    px_per_sample
-        The number of pixels per sample (rows x columns), maximum (2^32 - 1).
-    bits_per_px
-        The number of bits per pixel, should be a multiple of 8 and no larger than 64.
-    */
-
-    // Pre-define our errors for neatness
-    let err_bits_zero = Err(
-        String::from("The 'Bits Allocated' value must be greater than 0").into(),
-    );
-    let err_bits_not_octal = Err(
-        String::from("The 'Bits Allocated' value must be a multiple of 8").into(),
-    );
-    let err_invalid_bytes = Err(
-        String::from("A 'Bits Allocated' value greater than 64 is not supported").into()
-    );
-    let err_invalid_offset = Err(
-        String::from("Invalid segment offset found in the RLE header").into()
-    );
-    let err_insufficient_data = Err(
-        String::from("Frame is not long enough to contain RLE encoded data").into()
-    );
-    let err_invalid_nr_samples = Err(
-        String::from("The 'Samples Per Pixel' must be 1 or 3").into()
-    );
-    let err_segment_length = Err(
-        String::from("The decoded segment length does not match the expected length").into()
-    );
-
-    // Ensure we have a valid bits/px value
-    match bits_per_px {
-        0 => return err_bits_zero,
-        _ => match bits_per_px % 8 {
-            0 => {},
-            _ => return err_bits_not_octal
-        }
-    }
-
-    // Ensure `bytes_per_pixel` is in [1, 8]
-    let bytes_per_pixel: u8 = bits_per_px / 8;
-    if bytes_per_pixel > 8 { return err_invalid_bytes }
-
-    // Parse the RLE header and check results
-    // --------------------------------------
-    // Ensure we have at least enough data for the RLE header
-    let encoded_length = enc.len();
-    if encoded_length < 64 { return err_insufficient_data }
-
-    let header = <&[u8; 64]>::try_from(&enc[0..64]).unwrap();
-    let all_offsets: [u32; 15] = _parse_header(header);
-
-    // Ensure we have at least enough encoded data to hit the segment offsets
-    let max_offset = *all_offsets.iter().max().unwrap() as usize;
-    if max_offset > encoded_length - 2 { return err_invalid_offset }
-
-    // Get non-zero offsets and determine the number of segments
-    let mut nr_segments: u8 = 0;  // `nr_segments` is in [0, 15]
-    let mut offsets: Vec<u32> = Vec::with_capacity(15);
-    for val in all_offsets.iter().filter(|&n| *n != 0) {
-        offsets.push(*val);
-        nr_segments += 1u8;
-    }
-
-    // First offset must always be 64
-    if offsets[0] != 64 { return err_invalid_offset }
-
-    // Ensure we have a final ending offset at the end of the data
-    offsets.push(u32::try_from(encoded_length).unwrap());
-
-    // Ensure offsets are in increasing order
-    let mut last: u32 = 0;
-    for val in offsets.iter() {
-        if *val <= last {
-            return err_invalid_offset
-        }
-        last = *val;
-    }
-
-    // Check the samples per pixel is conformant
-    let samples_per_px: u8 = nr_segments / bytes_per_pixel;
-    match samples_per_px {
-        1 => {},
-        3 => {},
-        _ => return err_invalid_nr_samples
-    }
-
-    // Watch for overflow here; u32 * u32 -> u64
-    let expected_length = usize::try_from(
-        px_per_sample * u32::from(bytes_per_pixel * samples_per_px)
-    ).unwrap();
-
-    // Pre-allocate a vector for the decoded frame
-    let mut frame = vec![0u8; expected_length];
-
-    // Decode each segment and place it into the vector
-    // ------------------------------------------------
-    let bpp = usize::from(bytes_per_pixel);
-    let pps = usize::try_from(px_per_sample).unwrap();
-    // Concatenate sample planes into a frame
-    for sample in 0..samples_per_px {  // 0 or (0, 1, 2)
-        // Sample offset
-        let so = usize::from(sample * bytes_per_pixel) * pps;
-
-        // Interleave the segments into a sample plane
-        for byte_offset in 0..bytes_per_pixel {  // 0, [1, 2, 3, ..., 7]
-            // idx should be in range [0, 23], but max is 15
-            let idx = usize::from(sample * bytes_per_pixel + byte_offset);
-
-            // offsets[idx] is u32 -> usize not guaranteed
-            let start = usize::try_from(offsets[idx]).unwrap();
-            let end = usize::try_from(offsets[idx + 1]).unwrap();
-
-            // Pre-allocate a vector for the decoded segment
-            let mut segment = Vec::with_capacity(pps);
-            // Decode the segment
-            _decode_segment(
-                <&[u8]>::try_from(&enc[start..end]).unwrap(),
-                &mut segment
-            )?;
-
-            // Check decoded segment length is good
-            if segment.len() != pps { return err_segment_length }
-
-            // Interleave segment into frame
-            let bo = usize::from(byte_offset) + so;
-            for (ii, v) in segment.iter().enumerate() {
-                frame[ii * bpp + bo] = *v;
-            }
-        }
-    }
-
-    Ok(frame)
-}
-
-
 fn _decode_segment_into_frame(
     enc: &[u8], frame: &mut Vec<u8>, bpp: usize, initial_offset: usize
 ) -> Result<usize, Box<dyn Error>> {
@@ -566,7 +421,7 @@ fn _encode_segment() -> Result<(), Box<dyn Error>> {
 
 #[pyfunction]
 fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
-    /* Return RLE encoded Python bytes.
+    /* Return RLE encoded data as Python bytes.
 
     Parameters
     ----------
@@ -589,7 +444,7 @@ fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
 
 
 fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
-    /* Return a numpy array as an RLE encoded bytearray.
+    /* RLE encode `src` into `dst`
 
     Parameters
     ----------
@@ -597,17 +452,6 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
         The data to be encoded
     dst
         The destination for the encoded data
-
-    Returns
-    -------
-    Vec<u8>
-        The RLE encoded row, following the format specified by the DICOM
-        Standard, Part 5, :dcm:`Annex G<part05/chapter_G.html>`
-
-    Notes
-    -----
-    * 2-byte repeat runs are always encoded as Replicate Runs rather than
-      only when not preceeded by a Literal Run as suggested by the Standard.
     */
 
     // Reminders:
@@ -639,16 +483,35 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
             ii, previous, current, literal, replicate
         );
 
-        // While we still have data in src...
-        // For each item in src...
-
-        // Literal Run
-        // -----------
-        if current = previous {
-            if literal > 0 {
-                //
+        // Run type switching/control
+        // --------------------------
+        if current == previous {
+            // If current == previous:
+            //   if literal run, write out data and reset
+            //   else increment replicate run
+            if literal > 0 {  // Should be a run of at least 2?
+                // Write out and reset
+                dst.push(literal);
+                dst.push(&src[a..b]);
+                literal = 0;
             }
+            replicate += 1;
+        } else {
+            // If current != previous
+            //   if replicate run, write out data and reset
+            //   else increment literal run
+            if replicate > 0 {
+                // write out and reset
+                dst.push(replicate);  // Something like that
+                dst.push(current);
+                replicate = 0;
+            }
+            literal += 1;
         }
+
+        // OK, to reach here run length must be > 0 (obviously)
+
+
         // if currently in literal run...
         //   if the current value is still different to previous:
         //     continue literal run
@@ -658,37 +521,38 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
         //       reset run
         //     else:
         //       switch to replicate
-        if literal == MAX_RUN {
-            // Write out run and reset
-            dst.push(MAX_RUN);  // Er..? Convert?
-            dst.extend(&src[a..b]);  // or something like that
-            literal = 0;
-            replicate = 0;
-        }
 
-        // Replicate Run
-        // -----------
-        // if currently in replicate run...
-        //   if the current value is the same as the previous value:
-        //     continue replicate run
-        //   else
-        //     if replicate > 2?;
-        //       write out run
-        //       reset
-        //     else:
-        //       switch to literal
+        // If the run length is maxxed out, write out and reset
+        // Hmm, is it faster to combine the length check? Probably about the same
         if replicate == MAX_RUN {
-            // Write out run and reset
-            dst.push(MAX_RUN);  // Er..? Convert ...maybe 257 - 128?
+            // FIXME
+            dst.push(MAX_RUN);
             dst.push(current);
             literal = 0;
             replicate = 0;
+            continue;
+        } else if replicate == MAX_RUN {
+            // FIXME
+            dst.push(MAX_RUN);  // Er..? Convert?
+            dst.extend(&src[a..b]);  // something like that
+            literal = 0;
+            replicate = 0;
+            continue;
         }
-        // else reset and start literal run
-        //   literal run
 
-        if ii = MAX_SRC { return Ok(()) }
+        // At this point 0 < run length < MAX_RUN, so loop
+        // --------------------------------------
+        if ii = MAX_SRC { break; }
     }
+
+    // No more data, finish up the last write operation
+    if replicate > 0 {
+        // Write out and exit
+    } else if literal > 0 {
+        // Write out and exit
+    }
+
+    Ok(())
 
     // out = []
     // out_append = out.append
