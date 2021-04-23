@@ -4,6 +4,7 @@ import pytest
 
 try:
     from pydicom import dcmread
+    from pydicom.encaps import generate_pixel_data_frame
     from pydicom.uid import RLELossless
     HAVE_PYDICOM = True
 except ImportError:
@@ -29,24 +30,9 @@ class TestDecodePixelData:
         assert 800 == ds.Columns
         assert 1 == getattr(ds, 'NumberOfFrames', 1)
 
-        arr = decode_pixel_data(ds.PixelData, ds)
+        frame = next(generate_pixel_data_frame(ds.PixelData))
+        arr = decode_pixel_data(frame, ds)
         assert (480000, ) == arr.shape
-        assert arr.flags.writeable
-        assert 'uint8' == arr.dtype
-
-    def test_u8_1s_2f(self):
-        """Test plugin decoder for 8 bit, 1 sample, 2 frame data."""
-        ds = INDEX["OBXXXX1A_rle_2frame.dcm"]['ds']
-        assert ds.file_meta.TransferSyntaxUID == RLELossless
-        assert 8 == ds.BitsAllocated
-        assert 1 == ds.SamplesPerPixel
-        assert 0 == ds.PixelRepresentation
-        assert 600 == ds.Rows
-        assert 800 == ds.Columns
-        assert 2 == getattr(ds, 'NumberOfFrames', 1)
-
-        arr = decode_pixel_data(ds.PixelData, ds)
-        assert (960000, ) == arr.shape
         assert arr.flags.writeable
         assert 'uint8' == arr.dtype
 
@@ -61,23 +47,8 @@ class TestDecodePixelData:
         assert 100 == ds.Columns
         assert 1 == getattr(ds, 'NumberOfFrames', 1)
 
-        arr = decode_pixel_data(ds.PixelData, ds)
+        frame = next(generate_pixel_data_frame(ds.PixelData))
+        arr = decode_pixel_data(frame, ds)
         assert (120000, ) == arr.shape
-        assert arr.flags.writeable
-        assert 'uint8' == arr.dtype
-
-    def test_u32_3s_2f(self):
-        """Test plugin decoder for 32 bit, 3 sample, 2 frame data."""
-        ds = INDEX["SC_rgb_rle_32bit_2frame.dcm"]['ds']
-        assert ds.file_meta.TransferSyntaxUID == RLELossless
-        assert 32 == ds.BitsAllocated
-        assert 3 == ds.SamplesPerPixel
-        assert 0 == ds.PixelRepresentation
-        assert 100 == ds.Rows
-        assert 100 == ds.Columns
-        assert 2 == getattr(ds, 'NumberOfFrames', 1)
-
-        arr = decode_pixel_data(ds.PixelData, ds)
-        assert (240000, ) == arr.shape
         assert arr.flags.writeable
         assert 'uint8' == arr.dtype

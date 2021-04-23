@@ -8,15 +8,18 @@ on:
 
 jobs:
   pytest:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         python-version: [3.6, 3.7, 3.8, 3.9]
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
     - uses: actions/checkout@v2
+      with:
+        fetch-depth: 2
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
@@ -39,3 +42,11 @@ jobs:
         PYTHON_VERSION: ${{ matrix.python-version }}
       run: |
         pytest --cov rle
+
+    - name: Send coverage results
+      if: ${{ success() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.9' }}
+      run: |
+        bash <(curl --connect-timeout 10 --retry 10 --retry-max-time \
+        0 https://codecov.io/bash) || (sleep 30 && bash <(curl \
+        --connect-timeout 10 --retry 10 --retry-max-time \
+        0 https://codecov.io/bash))

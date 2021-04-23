@@ -103,7 +103,8 @@ fn _decode_frame(
     px_per_sample
         The number of pixels per sample (rows x columns), maximum (2^32 - 1).
     bits_per_px
-        The number of bits per pixel, should be a multiple of 8 and no larger than 64.
+        The number of bits per pixel, should be a multiple of 8 and no larger
+        than 64.
     */
 
     // Pre-define our errors for neatness

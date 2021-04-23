@@ -1,0 +1,24 @@
+comment:
+  layout: "diff, files"
+  behavior: default
+  require_changes: false  # if true: only post the comment if coverage changes
+  require_base: yes        # [yes :: must have a base report to post]
+  require_head: yes       # [yes :: must have a head report to post]
+  branches:               # branch names that can post comment
+    - "master"
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 0.1%
+    patch:
+      default:
+        target: auto
+        threshold: 0.1%
+
+ignore:
+  - "rle/tests"
+  - "rle/src"
+  - "rle/benchmarks"

@@ -28,7 +28,7 @@ setup(
     version = __version__,
     author = "scaramallion",
     author_email = "scaramallion@users.noreply.github.com",
-    url = "https://github.com/scaramallion/pylibjpeg-rle",
+    url = "https://github.com/pydicom/pylibjpeg-rle",
     license = "MIT",
     keywords = (
         "dicom pydicom python medicalimaging radiotherapy oncology imaging "
@@ -39,9 +39,9 @@ setup(
         "Intended Audience :: Developers",
         "Intended Audience :: Healthcare Industry",
         "Intended Audience :: Science/Research",
-        "Development Status :: 3 - Alpha",
+        #"Development Status :: 3 - Alpha",
         #"Development Status :: 4 - Beta",
-        #"Development Status :: 5 - Production/Stable",
+        "Development Status :: 5 - Production/Stable",
         "Natural Language :: English",
         "Programming Language :: Rust",
         "Programming Language :: Python :: 3.6",
