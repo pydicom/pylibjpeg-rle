@@ -453,10 +453,18 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
     Parameters
     ----------
     src
-        The data to be encoded
+        The data to be encoded, must contain at least 2 items.
     dst
-        The destination for the encoded data
+        The destination for the encoded data.
     */
+    let err_short_src = Err(
+        String::from(
+            "RLE encoding requires a segment row length of at least 2 bytes"
+        ).into(),
+    );
+
+    // Check we have the minimum required amount of data
+    if src.len() < 2 { return err_short_src }
 
     // Reminders:
     // * Each image row is encoded separately
@@ -465,23 +473,27 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
     // * 3-byte repeats shall be encoded as replicate runs
     // * Maximum length of literal/replicate runs is 128 bytes
 
+    // Replicate run: dst += [count, value]
+    //   count: number of bytes in the run (i8 = -replicate + 1)
+    //   value: the value of the repeating byte
+
+    // Literal run: dst += [count, a, b, c, ...]
+    //   count: number of bytes in the literal stream (i8 = literal - 1)
+    //   a, b, c, ...: the literal stream
+
     // Maximum length of a literal/replicate run
     let MAX_RUN: u8 = 128;
     // Track how long the current literal run is
-    let mut literal: i8 = 0;
+    // TODO: Check if math is more efficient for i8
+    let mut literal: usize = 0;
     // Track how long the current replicate run is
-    let mut replicate: i8 = 0;
-
-    let MAX_SRC = src.len();
+    let mut replicate: usize = 0;
 
     let mut ii: usize = 0;
-    let mut previous: u8 = *src[ii];  // Initial value
-
-    // Check there is an initial value (or two)
+    let mut previous: u8 = *src[ii];
 
     loop {
         current = *src[ii + 1];
-        ii += 1; // fixme
 
         println!(
             "ii: {}, prev: {}, cur: {}, l: {}, r: {}",
@@ -491,77 +503,66 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
         // Run type switching/control
         // --------------------------
         if current == previous {
-            // If current == previous:
-            //   if literal run, write out data and reset
-            //   else increment replicate run
+            // If in a literal run then write and reset to replicate
             if literal > 0 {  // Should be a run of at least 2?
-                // Write out and reset
-                dst.push(literal);
-                dst.push(&src[a..b]); // maybe b - 1
+                // Write out and reset literal runs
+                dst.push(literal - 1);
+                // Indexing here is probably wrong
+                // Write from start of literal run to previous item
+                dst.push(&src[(ii - literal)..(ii))]);
                 literal = 0;
                 // *switch to replicate run*
             }
-            // If switching lit -> repl this is `current` item
+            // If switching to replicate run this is `current` item
             replicate += 1;
         } else {
-            // If current != previous
-            //   if replicate run, write out data and reset
-            //   else increment literal run
+            // If in a replicate run then write and reset to literal
             if replicate > 0 {
-                // write out and reset
-                dst.push(replicate);  // Something like that
+                // Write out and reset
+                dst.push(257 - replicate);
                 dst.push(previous);
                 replicate = 0;
                 // *switch to literal run*
             }
-            // If switching repl -> lit this is `current` item
-            literal = 1;
+            // If switching to literal run this is `current` item
+            literal += 1;
         }
 
         // OK, to reach here run length must be > 0 (obviously)
 
-
-        // if currently in literal run...
-        //   if the current value is still different to previous:
-        //     continue literal run
-        //   else
-        //     if literal > 2?:
-        //       write out literal
-        //       reset run
-        //     else:
-        //       switch to replicate
-
-        // If the run length is maxed out, write out and reset
-        // Hmm, is it faster to combine the length check? Probably about the same
-        if replicate == MAX_RUN {
-            // FIXME
-            dst.push(MAX_RUN);
-            dst.push(current);
-            literal = 0;
+        // If the run length is maxed, write out and reset
+        if replicate == MAX_RUN {  // Should be more frequent
+            // Write out replicate run and reset
+            dst.push(129);
+            dst.push(previous);  // previous or current?
             replicate = 0;
-            continue;
-        } else if replicate == MAX_RUN {
-            // FIXME
-            dst.push(MAX_RUN);  // Er..? Convert?
+        } else if literal == MAX_RUN {
+            // Write out literal run and reset
+            dst.push(127);
             dst.extend(&src[a..b]);  // something like that
             literal = 0;
-            replicate = 0;
-            continue;
-        }
+        } // 128 is noop!
 
         // At this point 0 < run length < MAX_RUN, so loop
         // --------------------------------------
+
+        ii += 1; // fixme?
         if ii = MAX_SRC { break; }
+
+        previous = current;
     }
 
     // No more source data, finish up the last write operation
     if replicate > 0 {
-        // Write out and exit
+        // Write out and return
+        dst.push(257 - replicate);
+        dst.push(previous);
     } else if literal > 0 {
-        // Write out and exit
+        // Write out and return
+        dst.push(literal - 1);
+        dst.push(&src[(MAX_SRC - literal)..MAX_SRC)]);
     }
 
-    // I think that's sufficient, now to fix it up...
     Ok(())
 }
 
