@@ -9,9 +9,9 @@ from rle._rle import encode_row
 # Tests for RLE encoding
 REFERENCE_ENCODE_ROW = [
     # Input, output
-    pytest.param([], b'', id='1'),
+    pytest.param([], b'', id='0'),
     # Replicate run tests
-    # 2 (min) replicate
+    # 2 (min) replicate, could also be a 2 (min) literal
     pytest.param([0] * 2, b'\xff\x00', id='1'),
     pytest.param([0] * 3, b'\xfe\x00', id='2'),
     pytest.param([0] * 64, b'\xc1\x00', id='3'),
@@ -31,11 +31,15 @@ REFERENCE_ENCODE_ROW = [
     pytest.param([0, 1, 2], b'\x02\x00\x01\x02', id='11'),
     pytest.param([0, 1] * 32, b'\x3f' + b'\x00\x01' * 32, id='12'),
     # 127 literal
-    pytest.param([0, 1] * 63 + [2], b'\x7e' + b'\x00\x01' * 63 + b'\x02', id='13'),
+    pytest.param(
+        [0, 1] * 63 + [2], b'\x7e' + b'\x00\x01' * 63 + b'\x02', id='13'
+    ),
     # 128 literal (max)
     pytest.param([0, 1] * 64, b'\x7f' + b'\x00\x01' * 64, id='14'),
     # 128 (max) literal, 1 (min) literal
-    pytest.param([0, 1] * 64 + [2], b'\x7f' + b'\x00\x01' * 64 + b'\x00\x02', id='15'),
+    pytest.param(
+        [0, 1] * 64 + [2], b'\x7f' + b'\x00\x01' * 64 + b'\x00\x02', id='15'
+    ),
     # 128 (max) x 5 literals
     pytest.param([0, 1] * 64 * 5, (b'\x7f' + b'\x00\x01' * 64) * 5, id='16'),
     # Combination run tests
@@ -44,17 +48,29 @@ REFERENCE_ENCODE_ROW = [
     # 1 (min) literal, 128 (max) replicate
     pytest.param([0] + [1] * 128, b'\x00\x00\x81\x01', id='18'),
     # 128 (max) literal, 2 (min) replicate
-    pytest.param([0, 1] * 64 + [2] * 2, b'\x7f' + b'\x00\x01' * 64 + b'\xff\x02', id='19'),
+    pytest.param(
+        [0, 1] * 64 + [2] * 2,
+        b'\x7f' + b'\x00\x01' * 64 + b'\xff\x02',
+        id='19'
+    ),
     # 128 (max) literal, 128 (max) replicate
-    pytest.param([0, 1] * 64 + [2] * 128, b'\x7f' + b'\x00\x01' * 64 + b'\x81\x02', id='20'),
+    pytest.param(
+        [0, 1] * 64 + [2] * 128,
+        b'\x7f' + b'\x00\x01' * 64 + b'\x81\x02',
+        id='20'
+    ),
     # 2 (min) replicate, 1 (min) literal
     pytest.param([0, 0, 1], b'\xff\x00\x00\x01', id='21'),
     # 2 (min) replicate, 128 (max) literal
-    pytest.param([0, 0] + [1, 2] * 64, b'\xff\x00\x7f' + b'\x01\x02' * 64, id='22'),
+    pytest.param(
+        [0, 0] + [1, 2] * 64, b'\xff\x00\x7f' + b'\x01\x02' * 64, id='22'
+    ),
     # 128 (max) replicate, 1 (min) literal
     pytest.param([0] * 128 + [1], b'\x81\x00\x00\x01', id='23'),
     # 128 (max) replicate, 128 (max) literal
-    pytest.param([0] * 128 + [1, 2] * 64, b'\x81\x00\x7f' + b'\x01\x02' * 64, id='24'),
+    pytest.param(
+        [0] * 128 + [1, 2] * 64, b'\x81\x00\x7f' + b'\x01\x02' * 64, id='24'
+    ),
 ]
 
 
