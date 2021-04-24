@@ -439,7 +439,7 @@ fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
     // ceil(src.len() / 128) + src.len()
 
     // Close enough...
-    let mut dst: Vec<u8> = Vec::with_capacity(raw.len() + raw.len() / 128 + 1);
+    let mut dst: Vec<u8> = Vec::with_capacity(src.len() + src.len() / 128 + 1);
     match _decode_segment(src, &mut dst) {
         Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
         Err(err) => return Err(PyValueError::new_err(err.to_string())),
@@ -447,7 +447,8 @@ fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
 }
 
 
-fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
+#[allow(overflowing_literals)]
+fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     /* RLE encode `src` into `dst`
 
     Parameters
@@ -482,18 +483,20 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
     //   a, b, c, ...: the literal stream
 
     // Maximum length of a literal/replicate run
-    let MAX_RUN: u8 = 128;
+    let MAX_RUN: usize = 128;
+    let MAX_SRC = src.len();
     // Track how long the current literal run is
     // TODO: Check if math is more efficient for i8
-    let mut literal: usize = 0;
+    let mut literal: u8 = 0;
     // Track how long the current replicate run is
-    let mut replicate: usize = 0;
+    let mut replicate: u8 = 0;
 
     let mut ii: usize = 0;
-    let mut previous: u8 = *src[ii];
+    let mut previous: u8 = src[ii];
+    let mut current: u8;
 
     loop {
-        current = *src[ii + 1];
+        current = src[ii + 1];
 
         println!(
             "ii: {}, prev: {}, cur: {}, l: {}, r: {}",
@@ -506,10 +509,12 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
             // If in a literal run then write and reset to replicate
             if literal > 0 {  // Should be a run of at least 2?
                 // Write out and reset literal runs
-                dst.push(literal - 1);
+                dst.push(literal - 1u8);
                 // Indexing here is probably wrong
                 // Write from start of literal run to previous item
-                dst.push(&src[(ii - literal)..(ii))]);
+                for idx in (ii - usize::from(literal))..ii {
+                    dst.push(src[idx]);
+                }
                 literal = 0;
                 // *switch to replicate run*
             }
@@ -519,7 +524,7 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
             // If in a replicate run then write and reset to literal
             if replicate > 0 {
                 // Write out and reset
-                dst.push(257 - replicate);
+                dst.push(u8::try_from(257 - replicate)?);
                 dst.push(previous);
                 replicate = 0;
                 // *switch to literal run*
@@ -531,15 +536,17 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
         // OK, to reach here run length must be > 0 (obviously)
 
         // If the run length is maxed, write out and reset
-        if replicate == MAX_RUN {  // Should be more frequent
+        if usize::from(replicate) == MAX_RUN {  // Should be more frequent
             // Write out replicate run and reset
             dst.push(129);
             dst.push(previous);  // previous or current?
             replicate = 0;
-        } else if literal == MAX_RUN {
+        } else if usize::from(literal) == MAX_RUN {
             // Write out literal run and reset
             dst.push(127);
-            dst.extend(&src[a..b]);  // something like that
+            for idx in (ii - usize::from(literal))..ii {  // previous or current?
+                dst.push(src[idx]);
+            }
             literal = 0;
         } // 128 is noop!
 
@@ -547,7 +554,7 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
         // --------------------------------------
 
         ii += 1; // fixme?
-        if ii = MAX_SRC { break; }
+        if ii == MAX_SRC { break; }
 
         previous = current;
     }
@@ -555,12 +562,14 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
     // No more source data, finish up the last write operation
     if replicate > 0 {
         // Write out and return
-        dst.push(257 - replicate);
+        dst.push(u8::try_from(257 - replicate)?);
         dst.push(previous);
     } else if literal > 0 {
         // Write out and return
-        dst.push(literal - 1);
-        dst.push(&src[(MAX_SRC - literal)..MAX_SRC)]);
+        dst.push(literal - 1u8);
+        for idx in (MAX_SRC - usize::from(literal))..MAX_SRC {
+            dst.push(src[idx]);
+        }
     }
 
     Ok(())
