@@ -434,8 +434,12 @@ fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
         The RLE encoded data.
     */
     // Be nice to make use of threading for row encoding
-    // The encoded row data
-    let mut dst: Vec<u8> = Vec::with_capacity(raw.len());
+
+    // Assuming all literal runs, `dst` can never be greater than
+    // ceil(src.len() / 128) + src.len()
+
+    // Close enough...
+    let mut dst: Vec<u8> = Vec::with_capacity(raw.len() + raw.len() / 128 + 1);
     match _decode_segment(src, &mut dst) {
         Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
         Err(err) => return Err(PyValueError::new_err(err.to_string())),
@@ -458,6 +462,7 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
     // * Each image row is encoded separately
     // * Literal runs are a non-repetitive stream
     // * Replicate runs are a repetitive stream
+    // * 3-byte repeats shall be encoded as replicate runs
     // * Maximum length of literal/replicate runs is 128 bytes
 
     // Maximum length of a literal/replicate run
@@ -475,8 +480,8 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
     // Check there is an initial value (or two)
 
     loop {
-        ii += 1;
-        current = *src[ii];
+        current = *src[ii + 1];
+        ii += 1; // fixme
 
         println!(
             "ii: {}, prev: {}, cur: {}, l: {}, r: {}",
@@ -492,9 +497,11 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
             if literal > 0 {  // Should be a run of at least 2?
                 // Write out and reset
                 dst.push(literal);
-                dst.push(&src[a..b]);
+                dst.push(&src[a..b]); // maybe b - 1
                 literal = 0;
+                // *switch to replicate run*
             }
+            // If switching lit -> repl this is `current` item
             replicate += 1;
         } else {
             // If current != previous
@@ -503,10 +510,12 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
             if replicate > 0 {
                 // write out and reset
                 dst.push(replicate);  // Something like that
-                dst.push(current);
+                dst.push(previous);
                 replicate = 0;
+                // *switch to literal run*
             }
-            literal += 1;
+            // If switching repl -> lit this is `current` item
+            literal = 1;
         }
 
         // OK, to reach here run length must be > 0 (obviously)
@@ -522,7 +531,7 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
         //     else:
         //       switch to replicate
 
-        // If the run length is maxxed out, write out and reset
+        // If the run length is maxed out, write out and reset
         // Hmm, is it faster to combine the length check? Probably about the same
         if replicate == MAX_RUN {
             // FIXME
@@ -545,53 +554,14 @@ fn _encode_row(src: &[u8], dst: Vec<u8>) -> Result<(), Box<dyn Error>> {
         if ii = MAX_SRC { break; }
     }
 
-    // No more data, finish up the last write operation
+    // No more source data, finish up the last write operation
     if replicate > 0 {
         // Write out and exit
     } else if literal > 0 {
         // Write out and exit
     }
 
-    Ok(())
-
-    // out = []
-    // out_append = out.append
-    // out_extend = out.extend
-    //
-    // literal = []
-    // for key, group in groupby(arr.astype('uint8').tolist()):
-    //     group = list(group)
-    //     if len(group) == 1:
-    //         literal.append(group[0])
-    //     else:
-    //         if literal:
-    //             # Literal runs
-    //             for ii in range(0, len(literal), 128):
-    //                 _run = literal[ii:ii + 128]
-    //                 out_append(len(_run) - 1)
-    //                 out_extend(_run)
-    //
-    //             literal = []
-    //
-    //         # Replicate run
-    //         for ii in range(0, len(group), 128):
-    //             if len(group[ii:ii + 128]) > 1:
-    //                 # Replicate run
-    //                 out_append(257 - len(group[ii:ii + 128]))
-    //                 out_append(group[0])
-    //             else:
-    //                 # Literal run only if last replicate part is length 1
-    //                 out_append(0)
-    //                 out_append(group[0])
-    //
-    // # Final literal run if literal isn't followed by a replicate run
-    // for ii in range(0, len(literal), 128):
-    //     _run = literal[ii:ii + 128]
-    //     out_append(len(_run) - 1)
-    //     out_extend(_run)
-    //
-    // return pack('{}B'.format(len(out)), *out)
-
+    // I think that's sufficient, now to fix it up...
     Ok(())
 }
 
