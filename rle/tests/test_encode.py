@@ -35,13 +35,23 @@ REFERENCE_ENCODE_ROW = [
         [0, 1] * 63 + [2], b'\x7e' + b'\x00\x01' * 63 + b'\x02', id='13'
     ),
     # 128 literal (max)
-    pytest.param([0, 1] * 64, b'\x7f' + b'\x00\x01' * 64, id='14'),
+    pytest.param(
+        [0, 1] * 64,
+        b'\x7f' + b'\x00\x01' * 64,
+        id='14'),
     # 128 (max) literal, 1 (min) literal
     pytest.param(
-        [0, 1] * 64 + [2], b'\x7f' + b'\x00\x01' * 64 + b'\x00\x02', id='15'
+        [0, 1] * 64 + [2],
+        b'\x7f' + b'\x00\x01' * 64 + b'\x00\x02',
+        id='15'
     ),
     # 128 (max) x 5 literals
-    pytest.param([0, 1] * 64 * 5, (b'\x7f' + b'\x00\x01' * 64) * 5, id='16'),
+    pytest.param(
+        [0, 1] * 64 * 5,
+        (b'\x7f' + b'\x00\x01' * 64) * 5,
+        id='16'
+    ),
+
     # Combination run tests
     # 1 (min) literal, 1 (min) replicate
     pytest.param([0, 1, 1], b'\x00\x00\xff\x01', id='17'),

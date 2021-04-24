@@ -480,7 +480,15 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     //   a, b, c, ...: the literal stream
 
     // No data to be encoded
-    if src.len() == 0 { return Ok(()) }
+    match src.len() {
+        0 => { return Ok(()) },
+        1 => {
+            dst.push(0);
+            dst.push(0);
+            return Ok(())
+        },
+        _ => {}
+    }
 
     // Maximum length of a literal/replicate run
     let MAX_RUN: u8 = 128;
@@ -531,20 +539,19 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
             // }
             // If switching to replicate run this is `previous` item
             replicate += 1;
+        } else {
+            // If in a replicate run then write and reset to literal
+            // if replicate > 1 {
+            //     // Write out and reset
+            //     dst.push(257u8.wrapping_sub(replicate));
+            //     dst.push(previous);
+            //     replicate = 0;
+            //     // *switch to literal run*
+            // } // else do what?
+
+            // If switching to literal run this is `previous` item
+            literal += 1;
         }
-        // } else {
-        //     // If in a replicate run then write and reset to literal
-        //     if replicate > 1 {
-        //         // Write out and reset
-        //         dst.push(257u8.wrapping_sub(replicate));
-        //         dst.push(previous);
-        //         replicate = 0;
-        //         // *switch to literal run*
-        //     } // else do what?
-        //
-        //     // If switching to literal run this is `previous` item
-        //     literal += 1;
-        // }
 
         // If the run length is maxed, write out and reset
         if replicate == MAX_RUN {  // Should be more frequent
@@ -554,18 +561,15 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
             dst.push(129);
             dst.push(previous);
             replicate = 0;
-        }
-
-            // 129 byte literal run -> hmm
-        // } else if literal == MAX_RUN - 1 {
-        //     println!("Max literal run reached");
-        //     // Write out literal run and reset
-        //     dst.push(127);
-        //     for idx in (ii - usize::from(literal))..ii {  // push to previous
-        //         dst.push(src[idx]);
-        //     }
-        //     literal = 0;
-        // } // 128 is noop!
+        } else if literal == MAX_RUN {
+            println!("Max literal run reached");
+            // Write out literal run and reset
+            dst.push(127);
+            for idx in ii + 1 - usize::from(literal)..ii + 1 {  // push to previous
+                dst.push(src[idx]);
+            }
+            literal = 0;
+        } // 128 is noop!
 
         // At this point 0 < run length < MAX_RUN, so loop
         // --------------------------------------
