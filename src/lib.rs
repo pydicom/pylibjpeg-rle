@@ -503,16 +503,16 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     let mut current: u8 = src[1];
     let mut ii: usize = 1;
 
-    println!(
-        "Preloop - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
-        ii, MAX_SRC, previous, current, literal, replicate
-    );
-
     // Replicate and literal count are the length of the current run
     // Max is 128
     // Account for the first item
     if current == previous { replicate = 1; }
     else { literal = 1; }
+
+    println!(
+        "Preloop - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
+        ii, MAX_SRC, previous, current, literal, replicate
+    );
 
     loop {
         current = src[ii];
@@ -525,29 +525,27 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
         // Run type switching/control
         // --------------------------
         if current == previous {
-            // If in a literal run then write and reset to replicate
-            // if literal > 1 {  // Should be a run of at least 2?
-            //     // Write out and reset literal runs
-            //     dst.push(literal - 1u8);
-            //     // Indexing here is probably wrong
-            //     // Write from start of literal run to previous item
-            //     for idx in (ii - usize::from(literal))..ii {
-            //         dst.push(src[idx]);
-            //     }
-            //     literal = 0;
-            //     // *switch to replicate run*
-            // }
+            if literal == 1 {
+                literal = 0;
+                replicate = 1;
+            } else if literal > 1 {
+                dst.push(literal - 1u8);
+                for idx in ii - usize::from(literal)..ii {
+                    dst.push(src[idx]);
+                }
+                literal = 0;
+             }
             // If switching to replicate run this is `previous` item
             replicate += 1;
         } else {
-            // If in a replicate run then write and reset to literal
-            // if replicate > 1 {
-            //     // Write out and reset
-            //     dst.push(257u8.wrapping_sub(replicate));
-            //     dst.push(previous);
-            //     replicate = 0;
-            //     // *switch to literal run*
-            // } // else do what?
+            if replicate == 1 {
+                literal = 1;
+                replicate = 0;
+            } else if replicate > 1 {
+                dst.push(257u8.wrapping_sub(replicate));
+                dst.push(previous);
+                replicate = 0;
+             }
 
             // If switching to literal run this is `previous` item
             literal += 1;
@@ -565,7 +563,7 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
             println!("Max literal run reached");
             // Write out literal run and reset
             dst.push(127);
-            for idx in ii + 1 - usize::from(literal)..ii + 1 {  // push to previous
+            for idx in ii + 1 - usize::from(literal)..ii + 1 {
                 dst.push(src[idx]);
             }
             literal = 0;
