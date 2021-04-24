@@ -11,7 +11,7 @@ REFERENCE_ENCODE_ROW = [
     # Input, output
     pytest.param([], b'', id='0'),
     # Replicate run tests
-    # 2 (min) replicate, could also be a 2 (min) literal
+    # 2 (min) replicate, could also be a 2 (min) literal 0x00 0x00
     pytest.param([0] * 2, b'\xff\x00', id='1'),
     pytest.param([0] * 3, b'\xfe\x00', id='2'),
     pytest.param([0] * 64, b'\xc1\x00', id='3'),

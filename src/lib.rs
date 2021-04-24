@@ -491,109 +491,122 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     // Track how long the current replicate run is
     let mut replicate: u8 = 0;  // Should get no larger than 128
 
-    let mut ii: usize = 0;
-    let mut previous: u8 = src[ii];
-    let mut current: u8;
+    let mut previous: u8 = src[0];
+    let mut current: u8 = src[1];
+    let mut ii: usize = 1;
 
-    println!("Max src {}", MAX_SRC);
+    println!(
+        "Preloop - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
+        ii, MAX_SRC, previous, current, literal, replicate
+    );
+
+    // Replicate and literal count are the length of the current run
+    // Max is 128
+    // Account for the first item
+    if current == previous { replicate = 1; }
+    else { literal = 1; }
 
     loop {
-        ii += 1; // index of current src byte cuurent
         current = src[ii];
 
         println!(
-            "Start of loop - ii: {}, prev: {}, cur: {}, l: {}, r: {}",
-            ii, previous, current, literal, replicate
+            "Start of loop - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
+            ii, MAX_SRC, previous, current, literal, replicate
         );
 
         // Run type switching/control
         // --------------------------
         if current == previous {
             // If in a literal run then write and reset to replicate
-            if literal > 1 {  // Should be a run of at least 2?
-                // Write out and reset literal runs
-                dst.push(literal - 1u8);
-                // Indexing here is probably wrong
-                // Write from start of literal run to previous item
-                for idx in (ii - usize::from(literal))..ii {
-                    dst.push(src[idx]);
-                }
-                literal = 0;
-                // *switch to replicate run*
-            }
-            // If switching to replicate run this is `current` item
+            // if literal > 1 {  // Should be a run of at least 2?
+            //     // Write out and reset literal runs
+            //     dst.push(literal - 1u8);
+            //     // Indexing here is probably wrong
+            //     // Write from start of literal run to previous item
+            //     for idx in (ii - usize::from(literal))..ii {
+            //         dst.push(src[idx]);
+            //     }
+            //     literal = 0;
+            //     // *switch to replicate run*
+            // }
+            // If switching to replicate run this is `previous` item
             replicate += 1;
-        } else {
-            // If in a replicate run then write and reset to literal
-            if replicate > 1 {
-                // Write out and reset
-                dst.push(257u8.wrapping_sub(replicate));
-                dst.push(previous);
-                replicate = 0;
-                // *switch to literal run*
-            } // else do what?
-
-            // If switching to literal run this is `current` item
-            literal += 1;
         }
+        // } else {
+        //     // If in a replicate run then write and reset to literal
+        //     if replicate > 1 {
+        //         // Write out and reset
+        //         dst.push(257u8.wrapping_sub(replicate));
+        //         dst.push(previous);
+        //         replicate = 0;
+        //         // *switch to literal run*
+        //     } // else do what?
+        //
+        //     // If switching to literal run this is `previous` item
+        //     literal += 1;
+        // }
 
         // If the run length is maxed, write out and reset
-        if replicate == MAX_RUN - 1 {  // Should be more frequent
-            println!("Max replicate run reached");
+        if replicate == MAX_RUN {  // Should be more frequent
+            // 128 byte run reached
+            println!("    Max replicate run reached");
             // Write out replicate run and reset
             dst.push(129);
-            dst.push(current);
+            dst.push(previous);
             replicate = 0;
+        }
 
             // 129 byte literal run -> hmm
-        } else if literal == MAX_RUN - 1 {
-            println!("Max literal run reached");
-            // Write out literal run and reset
-            dst.push(127);
-            for idx in (ii - usize::from(literal))..ii {  // push to current
-                dst.push(src[idx]);
-            }
-            literal = 0;
-        } // 128 is noop!
+        // } else if literal == MAX_RUN - 1 {
+        //     println!("Max literal run reached");
+        //     // Write out literal run and reset
+        //     dst.push(127);
+        //     for idx in (ii - usize::from(literal))..ii {  // push to previous
+        //         dst.push(src[idx]);
+        //     }
+        //     literal = 0;
+        // } // 128 is noop!
 
         // At this point 0 < run length < MAX_RUN, so loop
         // --------------------------------------
 
         previous = current;
 
-        //ii += 1; // fixme?
 
         println!(
-            "  End of loop - ii: {}, prev: {}, cur: {}, l: {}, r: {}",
-            ii, previous, current, literal, replicate
+            "  End of loop - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
+            ii, MAX_SRC, previous, current, literal, replicate
         );
 
-        if ii == MAX_SRC - 1 { break; }
+        ii += 1;
+
+        // Break if `current` is the last byte of the src
+        if ii == MAX_SRC { break; }
     }
 
     println!(
-        "  Post-loop ii: {}, prev: {}, cur: {}, l: {}, r: {}",
-        ii, previous, current, literal, replicate
+        "  Post-loop   - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
+        ii, MAX_SRC, previous, current, literal, replicate
     );
-    println!("    dst {:?}", dst);
 
     // No more source data, finish up the last write operation
 
     // Handle cases where the last byte is part of a replicate run
-    //  such as when 129 0x00 bytes
+    //  such as when 129 0x00 bytes -> replicate(128) + literal(1)
+    // Handle cases where replicate run is 0x00 0x00 -> replicate(2)
     if replicate == 1 {
-        dst.push(255);
-        dst.push(current);
         replicate = 0;
+        literal = 1;
     }
 
     if replicate > 1 {
         // Write out and return
-        // `replicate` must be at least 2 or we overflow
+        // `replicate` must be at least 1 or we overflow
         // Eh, the math is out somewhere...
+        // 1 -> copy 2
         // 129 to 255 -> replicate run
-        dst.push(256u8.wrapping_sub(replicate));
-        dst.push(previous);
+        dst.push(257u8.wrapping_sub(replicate));
+        dst.push(current);
     // else if replicate == 1 do what?
     } else if literal > 0 {
         // Write out and return
@@ -606,10 +619,9 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     }
 
     println!(
-        "  Pre-return ii: {}, prev: {}, cur: {}, l: {}, r: {}",
-        ii, previous, current, literal, replicate
+        "  Return      - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
+        ii, MAX_SRC, previous, current, literal, replicate
     );
-    println!("    dst {:?}", dst);
 
     Ok(())
 }
