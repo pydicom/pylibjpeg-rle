@@ -440,7 +440,7 @@ fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
 
     // Close enough...
     let mut dst: Vec<u8> = Vec::with_capacity(src.len() + src.len() / 128 + 1);
-    match _decode_segment(src, &mut dst) {
+    match _encode_row(src, &mut dst) {
         Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
         Err(err) => return Err(PyValueError::new_err(err.to_string())),
     }
@@ -495,6 +495,8 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     let mut previous: u8 = src[ii];
     let mut current: u8;
 
+    println!("Max src {}", MAX_SRC);
+
     loop {
         current = src[ii + 1];
 
@@ -522,26 +524,25 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
             replicate += 1;
         } else {
             // If in a replicate run then write and reset to literal
-            if replicate > 0 {
+            if replicate > 1 {
                 // Write out and reset
                 dst.push(u8::try_from(257 - replicate)?);
                 dst.push(previous);
                 replicate = 0;
                 // *switch to literal run*
-            }
+            } // else do what?
+
             // If switching to literal run this is `current` item
             literal += 1;
         }
 
-        // OK, to reach here run length must be > 0 (obviously)
-
         // If the run length is maxed, write out and reset
-        if usize::from(replicate) == MAX_RUN {  // Should be more frequent
+        if usize::from(replicate) + 1 == MAX_RUN {  // Should be more frequent
             // Write out replicate run and reset
             dst.push(129);
-            dst.push(previous);  // previous or current?
+            dst.push(previous);
             replicate = 0;
-        } else if usize::from(literal) == MAX_RUN {
+        } else if usize::from(literal) + 1 == MAX_RUN {
             // Write out literal run and reset
             dst.push(127);
             for idx in (ii - usize::from(literal))..ii {  // previous or current?
@@ -554,18 +555,27 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
         // --------------------------------------
 
         ii += 1; // fixme?
-        if ii == MAX_SRC { break; }
+        if ii == MAX_SRC - 1 { break; }
 
         previous = current;
     }
 
+    println!(
+        "Post-loop ii: {}, prev: {}, cur: {}, l: {}, r: {}",
+        ii, previous, current, literal, replicate
+    );
+    println!("dst {:?}", dst);
+
     // No more source data, finish up the last write operation
-    if replicate > 0 {
+    if replicate > 1 {
         // Write out and return
+        // `replicate` must be at least 2 or we overflow
         dst.push(u8::try_from(257 - replicate)?);
         dst.push(previous);
+    // else if replicate == 1 do what?
     } else if literal > 0 {
         // Write out and return
+        // `literal` must be at least 1 or we undeflow
         dst.push(literal - 1u8);
         for idx in (MAX_SRC - usize::from(literal))..MAX_SRC {
             dst.push(src[idx]);

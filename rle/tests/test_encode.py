@@ -63,7 +63,7 @@ class TestEncodeRow:
     @pytest.mark.parametrize('row, ref', REFERENCE_ENCODE_ROW)
     def test_encode(self, row, ref):
         """Test encoding an empty row."""
-        row = np.asarray(row)
+        row = np.asarray(row, dtype='uint8')
         assert ref == encode_row(row.tobytes())
 
 
