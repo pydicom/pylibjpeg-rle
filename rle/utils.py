@@ -51,7 +51,7 @@ def encode_array(arr: "np.ndarray", **kwargs) -> Generator[bytes, None, None]:
         * ``{'ds': pydicom.dataset.Dataset}``, which is the corresponding
           dataset, or
         * ``{'rows': int, 'columns': int, samples_per_px': int,
-          'bits_per_px': int}``.
+          'bits_per_px': int, 'nr_frames': int}``.
 
     Yields
     ------
@@ -64,11 +64,16 @@ def encode_array(arr: "np.ndarray", **kwargs) -> Generator[bytes, None, None]:
 
     kwargs['byteorder'] = byteorder
 
-    if getattr(ds, "NumberOfFrames", 1) > 1:
-        for frame in arr:
-            yield encode_pixel_data(frame.tobytes(), kwargs)
+    if 'ds' in kwargs:
+        nr_frames = getattr(kwargs['ds'], "NumberOfFrames", 1)
     else:
-        yield encode_pixel_data(arr.tobytes(), kwargs)
+        nr_frames = kwargs['nr_frames']
+
+    if nr_frames > 1:
+        for frame in arr:
+            yield encode_pixel_data(frame.tobytes(), **kwargs)
+    else:
+        yield encode_pixel_data(arr.tobytes(), **kwargs)
 
 
 def encode_pixel_data(stream: bytes, **kwargs) -> bytes:
@@ -106,6 +111,7 @@ def encode_pixel_data(stream: bytes, **kwargs) -> bytes:
         The RLE encoded frame.
     """
     if 'ds' in kwargs:
+        ds = kwargs['ds']
         r, c = ds.Rows, ds.Columns
         bpp = ds.BitsAllocated
         spp = ds.SamplesPerPixel
@@ -121,7 +127,7 @@ def encode_pixel_data(stream: bytes, **kwargs) -> bytes:
     if spp not in [1, 3]:
         raise ValueError("'Samples per Pixel' must be 1 or 3")
 
-    if bpp * spp > 15:
+    if bpp / 8 * spp > 15:
         raise ValueError(
             "Unable to encode the data as the DICOM Standard blah blah"
         )
