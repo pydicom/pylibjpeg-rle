@@ -27,10 +27,6 @@ from rle.utils import generate_frames, pixel_array
 
 INDEX = get_indexed_datasets('1.2.840.10008.1.2.5')
 
-REF = [
-    ('MR_small_RLE.dcm', 2, (64, 1948)),
-]
-
 
 HEADER_DATA = [
     # (Number of segments, offsets)
@@ -78,7 +74,7 @@ class TestDecodeFrame:
     def test_bits_allocated_zero_raises(self):
         """Test exception raised for BitsAllocated 0."""
         msg = (
-            r"The \(0028,0010\) 'Bits Allocated' value must be greater than 0"
+            r"The \(0028,0100\) 'Bits Allocated' value must be greater than 0"
         )
         with pytest.raises(ValueError, match=msg):
             decode_frame(b'\x00\x00\x00\x00', 1, 0)
@@ -86,7 +82,7 @@ class TestDecodeFrame:
     def test_bits_allocated_not_octal_raises(self):
         """Test exception raised for BitsAllocated not a multiple of 8."""
         msg = (
-            r"The \(0028,0010\) 'Bits Allocated' value must be a multiple of 8"
+            r"The \(0028,0100\) 'Bits Allocated' value must be a multiple of 8"
         )
         with pytest.raises(ValueError, match=msg):
             decode_frame(b'\x00\x00\x00\x00', 1, 12)
@@ -94,7 +90,7 @@ class TestDecodeFrame:
     def test_bits_allocated_large_raises(self):
         """Test exception raised for BitsAllocated greater than 64."""
         msg = (
-            r"A \(0028,0010\) 'Bits Allocated' value greater than "
+            r"A \(0028,0100\) 'Bits Allocated' value greater than "
             r"64 is not supported"
         )
         with pytest.raises(ValueError, match=msg):

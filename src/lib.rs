@@ -112,17 +112,17 @@ fn _decode_frame(
     // Pre-define our errors for neatness
     let err_bits_zero = Err(
         String::from(
-            "The (0028,0010) 'Bits Allocated' value must be greater than 0"
+            "The (0028,0100) 'Bits Allocated' value must be greater than 0"
         ).into(),
     );
     let err_bits_not_octal = Err(
         String::from(
-            "The (0028,0010) 'Bits Allocated' value must be a multiple of 8"
+            "The (0028,0100) 'Bits Allocated' value must be a multiple of 8"
         ).into(),
     );
     let err_invalid_bytes = Err(
         String::from(
-            "A (0028,0010) 'Bits Allocated' value greater than 64 is not supported"
+            "A (0028,0100) 'Bits Allocated' value greater than 64 is not supported"
         ).into()
     );
     let err_invalid_offset = Err(
@@ -414,6 +414,7 @@ fn _decode_segment(enc: &[u8], out: &mut Vec<u8>) -> Result<(), Box<dyn Error>> 
 fn encode_frame<'a>(
     enc: &[u8], rows: u16, cols: u16, spp: u8, bpp: u8, byteorder: char, py: Python<'a>
 ) -> PyResult<&'a PyBytes> {
+    // Pre-allocate some space for the encoded data - worst case scenario
     let mut dst: Vec<u8> = Vec::new();
     match _encode_frame(enc, &mut dst, rows, cols, spp, bpp, byteorder) {
         Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
@@ -430,7 +431,8 @@ fn _encode_frame(
     Parameters
     ----------
     src
-        The data to be RLE encoded.
+        The data to be RLE encoded, ordered as R1, G1, B1, R2, G2, B2, ..., Rn, Gn, Bn
+        (i.e. Planar Configuration 0).
     dst
 
     rows
@@ -444,24 +446,13 @@ fn _encode_frame(
     byteorder
         Required if bpp is greater than 1, '>' if `src` is in big endian byte
         order, '<' if little endian.
-
     */
     let err_invalid_nr_samples = Err(
         String::from("The (0028,0002) 'Samples per Pixel' must be 1 or 3").into()
     );
-    let err_bits_zero = Err(
+    let err_invalid_bits_allocated = Err(
         String::from(
-            "The (0028,0010) 'Bits Allocated' value must be greater than 0"
-        ).into(),
-    );
-    let err_bits_not_octal = Err(
-        String::from(
-            "The (0028,0010) 'Bits Allocated' value must be a multiple of 8"
-        ).into(),
-    );
-    let err_invalid_bytes = Err(
-        String::from(
-            "A (0028,0010) 'Bits Allocated' value greater than 64 is not supported"
+            "The (0028,0100) 'Bits Allocated' value must be 8, 16, 32 or 64"
         ).into()
     );
     let err_invalid_nr_segments = Err(
@@ -473,132 +464,86 @@ fn _encode_frame(
     let err_invalid_parameters = Err(
         String::from(
             "The length of the data to be encoded is not consistent with the \
-            the values of the dataset's 'Rows', 'Columns', 'Samples per Pixel'  \
+            the values of the dataset's 'Rows', 'Columns', 'Samples per Pixel' \
             and 'Bits Allocated' elements"
 
         ).into()
     );
     let err_invalid_byteorder = Err(
-        String::from("Invalid byte order, must be '>' or '<'").into()
+        String::from("'byteorder' must be '>' or '<'").into()
     );
 
-    // Check Samples per Pixel
+    // Check 'Samples per Pixel'
     match spp {
         1 | 3 => {},
         _ => return err_invalid_nr_samples
     }
 
-    // Check Bits Allocated and byte ordering
+    // Check 'Bits Allocated'
     match bpp {
-        0 => return err_bits_zero,
+        0 => return err_invalid_bits_allocated,
         _ => match bpp % 8 {
             0 => {},
-            _ => return err_bits_not_octal
+            _ => return err_invalid_bits_allocated
         }
     }
-    // Ensure `bytes_per_pixel` is in [1, 8]
+    // Ensure `bytes_per_pixel` is in [1, 2, 4, 8]
     let bytes_per_pixel: u8 = bpp / 8;
-    if bytes_per_pixel > 8 { return err_invalid_bytes }
-
-    if bytes_per_pixel > 1 {
-        match byteorder {
+    match bytes_per_pixel {
+        1 => {},
+        2 | 4 | 8 => match byteorder {
             '>' | '<' => {},
             _ => return err_invalid_byteorder
-        }
+        },
+        _ => return err_invalid_bits_allocated
     }
-
-    println!(
-        "src len {}, r {}, c {}, spp {}, bpp {}, bo {}",
-        src.len(), rows, cols, spp, bpp, byteorder
-    );
 
     // Ensure parameters are consistent
     let r = usize::try_from(rows).unwrap();
     let c = usize::try_from(cols).unwrap();
 
+    println!("{}", src.len());
     if src.len() != r * c * usize::from(spp * bytes_per_pixel) {
         return err_invalid_parameters
     }
 
     let nr_segments: u8 = spp * bytes_per_pixel;
-    println!("Nr segs {}", nr_segments);
     if nr_segments > 15 { return err_invalid_nr_segments }
 
-    let is_big_endian: bool = byteorder == '>';
-    println!("is big {}", is_big_endian);
-
-
-    // Big endian byte order '>'
-    // spp 3, bpp 2, 100x100: a = MSB, b = LSB
-    // R0a-0, R0b-0, G0a-0, G0b-0, B0a-0, B0a-0, ..., B99a-0, B99b-0, R0a-1, ...
-
-    // Little endian byte order '<'
-    // spp 3, bpp 2, 100x100: a = MSB, b = LSB
-    // R0b-0, R0a-0, G0b-0, G0a-0, B0b-0, B0a-0, ..., B99b-0, B99a-0, R0b-1, ...
-
-    // Need to be big endian u32s
-    //let mut header: Vec<u32> = vec![0; 16];
+    // Reserve 64 bytes of `dst` for the RLE header
+    // Values in the header are in little endian order
     dst.extend(u32::from(nr_segments).to_le_bytes().to_vec());
     dst.extend([0u8; 60].to_vec());
-    println!("header {}", dst.len());
-    // Big endian
-    let mut start = 0;
-    let process_step = usize::from(spp * bytes_per_pixel);
 
-    let mut start: Vec<usize> = (0..usize::from(nr_segments)).collect();
-    if !is_big_endian {
-        // Shuffle from BE to LE ordering
-        // This is ridiculous!
-        for ii in 0..usize::from(nr_segments / bytes_per_pixel) {
-            println!("{} {}", ii, bpp);
-            match bpp {
-                8 => {},
-                16 => start.swap(ii * 2, ii * 2 + 1),
-                32 => {
-                    start.swap(ii * 2, ii * 2 + 3);
-                    start.swap(ii * 2 + 1, ii * 2 + 2);
-                },
-                64 => {
-                    start.swap(ii * 2, ii * 2 + 7);
-                    start.swap(ii * 2 + 1, ii * 2 + 6);
-                    start.swap(ii * 2 + 2, ii * 2 + 5);
-                    start.swap(ii * 2 + 3, ii * 2 + 4);
-                },
-                _ => { return err_invalid_bytes }
-            }
+    // A vector of the start indexes used when segmenting - default big endian
+    let mut start_indices: Vec<usize> = (0..usize::from(nr_segments)).collect();
+    if byteorder != '>' {
+        // `src` has little endian byte ordering
+        for idx in 0..spp {
+            let s = usize::from(idx * bytes_per_pixel);
+            let e = usize::from((idx + 1) * bytes_per_pixel);
+            start_indices[s..e].reverse();
         }
     }
-    println!("starts {:?}", start);
 
     for idx in 0..usize::from(nr_segments) {
-
-        // Convert to 4 big-endian ordered u8s
-        let offset = (u32::try_from(dst.len()).unwrap()).to_le_bytes();
-        //println!("{:?}", offset);
+        // Convert to 4x le ordered u8s and update RLE header
+        let current_offset = (u32::try_from(dst.len()).unwrap()).to_le_bytes();
         for ii in idx * 4 + 4..idx * 4 + 8 {
             // idx = 0: 4, 5, 6, 7 -> 0, 1, 2, 3
             // idx = 1: 8, 9, 10, 11 -> 0, 1, 2, 3
-            dst[ii] = offset[ii - idx * 4 - 4];
+            dst[ii] = current_offset[ii - idx * 4 - 4];
         }
 
-        println!("idx {}, ps {}, o {:?}", idx, process_step, offset);
-        // Correlate idx to which bytes to process as a segment
-        // spp 1, bpp 1 -> nr segments 1 -> process all
-        // spp 3, bpp 1 -> nr_segments 3 -> process every third then offset by 1
-        // spp 1, bpp 2 -> nr_segments 2 -> process every second then offset by 1
-        // spp 3, bpp 2 -> nr_segments 6 -> process every sixth then offset by 1
-        // spp 3, bpp 4 -> nr_segments 12 -> process every twelfth then offset by 1
+        // Note the offset start of the `src` iter
+        let segment: Vec<u8> = src[start_indices[idx]..]
+            .into_iter()
+            .step_by(usize::from(spp * bytes_per_pixel))
+            .cloned()
+            .collect();
 
-        // Need to reverse order of offset if little endian
-        // i.e. 0 -> 1 -> 2 -> 3 becomes 3 -> 2 -> 1 -> 0
-
-        // need to offset src iter start by idx
-        let segment: Vec<u8> = src[start[idx]..].into_iter().step_by(process_step).cloned().collect();
-        _encode_segment_b(segment, dst, cols);
-        //offsets.push(dst.len());
+        _encode_segment_from_vector(segment, dst, cols)?;
     }
-    println!("{:?}", &dst[..64]);
-    println!("{:?}", &dst[64..164]);
 
     Ok(())
 }
@@ -607,14 +552,14 @@ fn _encode_frame(
 #[pyfunction]
 fn encode_segment<'a>(src: &[u8], cols: u16, py: Python<'a>) -> PyResult<&'a PyBytes> {
     let mut dst = Vec::new();
-    match _encode_segment(src, &mut dst, cols) {
+    match _encode_segment_from_array(src, &mut dst, cols) {
         Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
         Err(err) => return Err(PyValueError::new_err(err.to_string())),
     }
 }
 
 
-fn _encode_segment(
+fn _encode_segment_from_array(
     src: &[u8], dst: &mut Vec<u8>, cols: u16
 ) -> Result<(), Box<dyn Error>> {
     /*
@@ -637,22 +582,23 @@ fn _encode_segment(
     if src.len() % row_len != 0 { return err_invalid_length }
 
     let nr_rows = src.len() / row_len;
-    let mut offset: usize = 0;
+    let mut offset: usize;
 
     for row_idx in 0..nr_rows {
         offset = row_idx * row_len;
-        _encode_row(&src[offset..offset + row_len], dst);
+        _encode_row(&src[offset..offset + row_len], dst)?;
     }
 
-    // Each segment must be even length or padded to even length with noop byte
+    // Each segment must be even length or padded to even length with zero
     if dst.len() % 2 != 0 {
-        dst.push(128);
+        dst.push(0);
     }
 
     Ok(())
 }
 
-fn _encode_segment_b(
+
+fn _encode_segment_from_vector(
     src: Vec<u8>, dst: &mut Vec<u8>, cols: u16
 ) -> Result<(), Box<dyn Error>> {
     /*
@@ -675,16 +621,16 @@ fn _encode_segment_b(
     if src.len() % row_len != 0 { return err_invalid_length }
 
     let nr_rows = src.len() / row_len;
-    let mut offset: usize = 0;
+    let mut offset: usize;
 
     for row_idx in 0..nr_rows {
         offset = row_idx * row_len;
-        _encode_row(&src[offset..offset + row_len], dst);
+        _encode_row(&src[offset..offset + row_len], dst)?;
     }
 
-    // Each segment must be even length or padded to even length with noop byte
+    // Each segment must be even length or padded to even length with zero
     if dst.len() % 2 != 0 {
-        dst.push(128);
+        dst.push(0);
     }
 
     Ok(())
@@ -755,8 +701,8 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     }
 
     // Maximum length of a literal/replicate run
-    let MAX_RUN: u8 = 128;
-    let MAX_SRC = src.len();
+    let max_run_length: u8 = 128;
+    let src_length = src.len();
 
     // `replicate` and `literal` are the length of the current run
     let mut literal: u8 = 0;
@@ -775,7 +721,7 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
 
         //println!(
         //    "Start of loop - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
-        //    ii, MAX_SRC, previous, current, literal, replicate
+        //    ii, src_length, previous, current, literal, replicate
         //);
 
         // Run type switching/control
@@ -802,7 +748,7 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
                 // Write out replicate run and reset
                 // `replicate` must be at least 2 to avoid overflow
                 dst.push(257u8.wrapping_sub(replicate));
-                // Note use of previous item
+                // Note use of `previous` item
                 dst.push(previous);
                 replicate = 0;
              }
@@ -810,15 +756,15 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
         }
 
         // If the run length is maxed, write out and reset
-        if replicate == MAX_RUN {  // Should be more frequent
+        if replicate == max_run_length {  // Should be more frequent
             // Write out replicate run and reset
             dst.push(129);
             dst.push(previous);
             replicate = 0;
-        } else if literal == MAX_RUN {
+        } else if literal == max_run_length {
             // Write out literal run and reset
             dst.push(127);
-            // The indexing is different here because ii is the current item, not previous
+            // The indexing is different here because ii is the `current` item, not previous
             dst.extend(&src[ii + 1 - usize::from(literal)..ii + 1]);
             literal = 0;
         } // 128 is noop!
@@ -826,7 +772,7 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
         previous = current;
         ii += 1;
 
-        if ii == MAX_SRC { break; }
+        if ii == src_length { break; }
     }
 
     // Handle cases where the last byte is continuation of a replicate run
@@ -845,7 +791,7 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
         // Write out and return
         // `literal` must be at least 1 or we undeflow
         dst.push(literal - 1u8);
-        dst.extend(&src[MAX_SRC - usize::from(literal)..]);
+        dst.extend(&src[src_length - usize::from(literal)..]);
     }
 
     Ok(())
