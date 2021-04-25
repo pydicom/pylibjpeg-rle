@@ -1,12 +1,14 @@
 
-use std::error::Error;
 use std::convert::TryFrom;
+use std::error::Error;
 
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use pyo3::types::{PyBytes, PyByteArray};
 use pyo3::exceptions::{PyValueError};
 
+
+//use rayon::prelude::*;
 
 // RLE Decoding
 
@@ -130,7 +132,7 @@ fn _decode_frame(
         String::from("Frame is not long enough to contain RLE encoded data").into()
     );
     let err_invalid_nr_samples = Err(
-        String::from("The (0028,0002) 'Samples Per Pixel' must be 1 or 3").into()
+        String::from("The (0028,0002) 'Samples per Pixel' must be 1 or 3").into()
     );
     let err_segment_length = Err(
         String::from(
@@ -186,8 +188,7 @@ fn _decode_frame(
     // Check the samples per pixel is conformant
     let samples_per_px: u8 = nr_segments / bytes_per_pixel;
     match samples_per_px {
-        1 => {},
-        3 => {},
+        1 | 3 => {},
         _ => return err_invalid_nr_samples
     }
 
@@ -410,11 +411,282 @@ fn _decode_segment(enc: &[u8], out: &mut Vec<u8>) -> Result<(), Box<dyn Error>> 
 
 // RLE Encoding
 #[pyfunction]
-fn encode_frame() {}
+fn encode_frame<'a>(
+    enc: &[u8], rows: u16, cols: u16, spp: u8, bpp: u8, byteorder: char, py: Python<'a>
+) -> PyResult<&'a PyBytes> {
+    let mut dst: Vec<u8> = Vec::new();
+    match _encode_frame(enc, &mut dst, rows, cols, spp, bpp, byteorder) {
+        Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
+        Err(err) => return Err(PyValueError::new_err(err.to_string())),
+    }
+}
 
 
-fn _encode_segment() -> Result<(), Box<dyn Error>> {
+fn _encode_frame(
+    src: &[u8], dst: &mut Vec<u8>, rows: u16, cols: u16, spp: u8, bpp: u8, byteorder: char
+) -> Result<(), Box<dyn Error>> {
+    /*
+
+    Parameters
+    ----------
+    src
+        The data to be RLE encoded.
+    dst
+
+    rows
+        The number of rows in the data.
+    cols
+        The number of columns in the data.
+    spp
+        The number of samples per pixel, supported values are 1 or 3.
+    bpp
+        The number of bits per pixel, supported values are 8, 16, 32 and 64.
+    byteorder
+        Required if bpp is greater than 1, '>' if `src` is in big endian byte
+        order, '<' if little endian.
+
+    */
+    let err_invalid_nr_samples = Err(
+        String::from("The (0028,0002) 'Samples per Pixel' must be 1 or 3").into()
+    );
+    let err_bits_zero = Err(
+        String::from(
+            "The (0028,0010) 'Bits Allocated' value must be greater than 0"
+        ).into(),
+    );
+    let err_bits_not_octal = Err(
+        String::from(
+            "The (0028,0010) 'Bits Allocated' value must be a multiple of 8"
+        ).into(),
+    );
+    let err_invalid_bytes = Err(
+        String::from(
+            "A (0028,0010) 'Bits Allocated' value greater than 64 is not supported"
+        ).into()
+    );
+    let err_invalid_nr_segments = Err(
+        String::from(
+            "Unable to encode as the DICOM Standard only allows \
+            a maximum of 15 segments in RLE encoded data"
+        ).into()
+    );
+    let err_invalid_parameters = Err(
+        String::from(
+            "The length of the data to be encoded is not consistent with the \
+            the values of the dataset's 'Rows', 'Columns', 'Samples per Pixel'  \
+            and 'Bits Allocated' elements"
+
+        ).into()
+    );
+    let err_invalid_byteorder = Err(
+        String::from("Invalid byte order, must be '>' or '<'").into()
+    );
+
+    // Check Samples per Pixel
+    match spp {
+        1 | 3 => {},
+        _ => return err_invalid_nr_samples
+    }
+
+    // Check Bits Allocated and byte ordering
+    match bpp {
+        0 => return err_bits_zero,
+        _ => match bpp % 8 {
+            0 => {},
+            _ => return err_bits_not_octal
+        }
+    }
+    // Ensure `bytes_per_pixel` is in [1, 8]
+    let bytes_per_pixel: u8 = bpp / 8;
+    if bytes_per_pixel > 8 { return err_invalid_bytes }
+
+    if bytes_per_pixel > 1 {
+        match byteorder {
+            '>' | '<' => {},
+            _ => return err_invalid_byteorder
+        }
+    }
+
+    println!(
+        "src len {}, r {}, c {}, spp {}, bpp {}, bo {}",
+        src.len(), rows, cols, spp, bpp, byteorder
+    );
+
+    // Ensure parameters are consistent
+    let r = usize::try_from(rows).unwrap();
+    let c = usize::try_from(cols).unwrap();
+
+    if src.len() != r * c * usize::from(spp * bytes_per_pixel) {
+        return err_invalid_parameters
+    }
+
+    let nr_segments: u8 = spp * bytes_per_pixel;
+    println!("Nr segs {}", nr_segments);
+    if nr_segments > 15 { return err_invalid_nr_segments }
+
+    let is_big_endian: bool = byteorder == '>';
+    println!("is big {}", is_big_endian);
+
+
+    // Big endian byte order '>'
+    // spp 3, bpp 2, 100x100: a = MSB, b = LSB
+    // R0a-0, R0b-0, G0a-0, G0b-0, B0a-0, B0a-0, ..., B99a-0, B99b-0, R0a-1, ...
+
+    // Little endian byte order '<'
+    // spp 3, bpp 2, 100x100: a = MSB, b = LSB
+    // R0b-0, R0a-0, G0b-0, G0a-0, B0b-0, B0a-0, ..., B99b-0, B99a-0, R0b-1, ...
+
+    // Need to be big endian u32s
+    //let mut header: Vec<u32> = vec![0; 16];
+    dst.extend(u32::from(nr_segments).to_le_bytes().to_vec());
+    dst.extend([0u8; 60].to_vec());
+    println!("header {}", dst.len());
+    // Big endian
+    let mut start = 0;
+    let process_step = usize::from(spp * bytes_per_pixel);
+
+    let mut start: Vec<usize> = (0..usize::from(nr_segments)).collect();
+    if !is_big_endian {
+        // Shuffle from BE to LE ordering
+        // This is ridiculous!
+        for ii in 0..usize::from(nr_segments / bytes_per_pixel) {
+            println!("{} {}", ii, bpp);
+            match bpp {
+                8 => {},
+                16 => start.swap(ii * 2, ii * 2 + 1),
+                32 => {
+                    start.swap(ii * 2, ii * 2 + 3);
+                    start.swap(ii * 2 + 1, ii * 2 + 2);
+                },
+                64 => {
+                    start.swap(ii * 2, ii * 2 + 7);
+                    start.swap(ii * 2 + 1, ii * 2 + 6);
+                    start.swap(ii * 2 + 2, ii * 2 + 5);
+                    start.swap(ii * 2 + 3, ii * 2 + 4);
+                },
+                _ => { return err_invalid_bytes }
+            }
+        }
+    }
+    println!("starts {:?}", start);
+
+    for idx in 0..usize::from(nr_segments) {
+
+        // Convert to 4 big-endian ordered u8s
+        let offset = (u32::try_from(dst.len()).unwrap()).to_le_bytes();
+        //println!("{:?}", offset);
+        for ii in idx * 4 + 4..idx * 4 + 8 {
+            // idx = 0: 4, 5, 6, 7 -> 0, 1, 2, 3
+            // idx = 1: 8, 9, 10, 11 -> 0, 1, 2, 3
+            dst[ii] = offset[ii - idx * 4 - 4];
+        }
+
+        println!("idx {}, ps {}, o {:?}", idx, process_step, offset);
+        // Correlate idx to which bytes to process as a segment
+        // spp 1, bpp 1 -> nr segments 1 -> process all
+        // spp 3, bpp 1 -> nr_segments 3 -> process every third then offset by 1
+        // spp 1, bpp 2 -> nr_segments 2 -> process every second then offset by 1
+        // spp 3, bpp 2 -> nr_segments 6 -> process every sixth then offset by 1
+        // spp 3, bpp 4 -> nr_segments 12 -> process every twelfth then offset by 1
+
+        // Need to reverse order of offset if little endian
+        // i.e. 0 -> 1 -> 2 -> 3 becomes 3 -> 2 -> 1 -> 0
+
+        // need to offset src iter start by idx
+        let segment: Vec<u8> = src[start[idx]..].into_iter().step_by(process_step).cloned().collect();
+        _encode_segment_b(segment, dst, cols);
+        //offsets.push(dst.len());
+    }
+    println!("{:?}", &dst[..64]);
+    println!("{:?}", &dst[64..164]);
+
+    Ok(())
+}
+
+
+#[pyfunction]
+fn encode_segment<'a>(src: &[u8], cols: u16, py: Python<'a>) -> PyResult<&'a PyBytes> {
+    let mut dst = Vec::new();
+    match _encode_segment(src, &mut dst, cols) {
+        Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
+        Err(err) => return Err(PyValueError::new_err(err.to_string())),
+    }
+}
+
+
+fn _encode_segment(
+    src: &[u8], dst: &mut Vec<u8>, cols: u16
+) -> Result<(), Box<dyn Error>> {
+    /*
+
+    Parameters
+    ----------
+    src
+        The data to be encoded.
+    dst
+        The destination for the encoded data.
+    cols
+        The length of each row in the `src`.
+    */
+    let err_invalid_length = Err(
+        String::from("The (0028,0011) 'Columns' value is invalid").into()
+    );
+
+    let row_len: usize = usize::try_from(cols).unwrap();
+
+    if src.len() % row_len != 0 { return err_invalid_length }
+
+    let nr_rows = src.len() / row_len;
+    let mut offset: usize = 0;
+
+    for row_idx in 0..nr_rows {
+        offset = row_idx * row_len;
+        _encode_row(&src[offset..offset + row_len], dst);
+    }
+
     // Each segment must be even length or padded to even length with noop byte
+    if dst.len() % 2 != 0 {
+        dst.push(128);
+    }
+
+    Ok(())
+}
+
+fn _encode_segment_b(
+    src: Vec<u8>, dst: &mut Vec<u8>, cols: u16
+) -> Result<(), Box<dyn Error>> {
+    /*
+
+    Parameters
+    ----------
+    src
+        The data to be encoded.
+    dst
+        The destination for the encoded data.
+    cols
+        The length of each row in the `src`.
+    */
+    let err_invalid_length = Err(
+        String::from("The (0028,0011) 'Columns' value is invalid").into()
+    );
+
+    let row_len: usize = usize::try_from(cols).unwrap();
+
+    if src.len() % row_len != 0 { return err_invalid_length }
+
+    let nr_rows = src.len() / row_len;
+    let mut offset: usize = 0;
+
+    for row_idx in 0..nr_rows {
+        offset = row_idx * row_len;
+        _encode_row(&src[offset..offset + row_len], dst);
+    }
+
+    // Each segment must be even length or padded to even length with noop byte
+    if dst.len() % 2 != 0 {
+        dst.push(128);
+    }
+
     Ok(())
 }
 
@@ -433,8 +705,6 @@ fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
     bytes
         The RLE encoded data.
     */
-    // Be nice to make use of threading for row encoding
-
     // Assuming all literal runs, `dst` can never be greater than
     // ceil(src.len() / 128) + src.len()
 
@@ -454,15 +724,10 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     Parameters
     ----------
     src
-        The data to be encoded, must contain at least 2 items.
+        The data to be encoded.
     dst
         The destination for the encoded data.
     */
-    //let err_short_src = Err(
-    //    String::from(
-    //        "RLE encoding requires a segment row length of at least 2 bytes"
-    //    ).into(),
-    //);
 
     // Reminders:
     // * Each image row is encoded separately
@@ -479,12 +744,11 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     //   count: number of bytes in the literal stream (i8 = literal - 1)
     //   a, b, c, ...: the literal stream
 
-    // No data to be encoded
     match src.len() {
         0 => { return Ok(()) },
         1 => {
-            dst.push(0);
-            dst.push(0);
+            dst.push(0);  // literal run
+            dst.push(src[0]);
             return Ok(())
         },
         _ => {}
@@ -493,109 +757,80 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     // Maximum length of a literal/replicate run
     let MAX_RUN: u8 = 128;
     let MAX_SRC = src.len();
-    // Track how long the current literal run is
-    // TODO: Check if math is more efficient for i8
-    let mut literal: u8 = 0;  // Should get no larger than 128
-    // Track how long the current replicate run is
-    let mut replicate: u8 = 0;  // Should get no larger than 128
+
+    // `replicate` and `literal` are the length of the current run
+    let mut literal: u8 = 0;
+    let mut replicate: u8 = 0;
 
     let mut previous: u8 = src[0];
     let mut current: u8 = src[1];
     let mut ii: usize = 1;
 
-    // Replicate and literal count are the length of the current run
-    // Max is 128
     // Account for the first item
     if current == previous { replicate = 1; }
     else { literal = 1; }
 
-    println!(
-        "Preloop - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
-        ii, MAX_SRC, previous, current, literal, replicate
-    );
-
     loop {
         current = src[ii];
 
-        println!(
-            "Start of loop - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
-            ii, MAX_SRC, previous, current, literal, replicate
-        );
+        //println!(
+        //    "Start of loop - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
+        //    ii, MAX_SRC, previous, current, literal, replicate
+        //);
 
         // Run type switching/control
-        // --------------------------
         if current == previous {
             if literal == 1 {
+                // Switch over to a replicate run
                 literal = 0;
                 replicate = 1;
             } else if literal > 1 {
+                // Write out literal run and reset
                 dst.push(literal - 1u8);
-                for idx in ii - usize::from(literal)..ii {
-                    dst.push(src[idx]);
-                }
+                // Hmm, check the indexing here...
+                dst.extend(&src[ii - usize::from(literal)..ii]);
                 literal = 0;
              }
-            // If switching to replicate run this is `previous` item
             replicate += 1;
+
         } else {
             if replicate == 1 {
+                // Switch over to a literal run
                 literal = 1;
                 replicate = 0;
             } else if replicate > 1 {
+                // Write out replicate run and reset
+                // `replicate` must be at least 2 to avoid overflow
                 dst.push(257u8.wrapping_sub(replicate));
+                // Note use of previous item
                 dst.push(previous);
                 replicate = 0;
              }
-
-            // If switching to literal run this is `previous` item
             literal += 1;
         }
 
         // If the run length is maxed, write out and reset
         if replicate == MAX_RUN {  // Should be more frequent
-            // 128 byte run reached
-            println!("    Max replicate run reached");
             // Write out replicate run and reset
             dst.push(129);
             dst.push(previous);
             replicate = 0;
         } else if literal == MAX_RUN {
-            println!("Max literal run reached");
             // Write out literal run and reset
             dst.push(127);
-            for idx in ii + 1 - usize::from(literal)..ii + 1 {
-                dst.push(src[idx]);
-            }
+            // The indexing is different here because ii is the current item, not previous
+            dst.extend(&src[ii + 1 - usize::from(literal)..ii + 1]);
             literal = 0;
         } // 128 is noop!
 
-        // At this point 0 < run length < MAX_RUN, so loop
-        // --------------------------------------
-
         previous = current;
-
-
-        println!(
-            "  End of loop - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
-            ii, MAX_SRC, previous, current, literal, replicate
-        );
-
         ii += 1;
 
-        // Break if `current` is the last byte of the src
         if ii == MAX_SRC { break; }
     }
 
-    println!(
-        "  Post-loop   - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
-        ii, MAX_SRC, previous, current, literal, replicate
-    );
-
-    // No more source data, finish up the last write operation
-
-    // Handle cases where the last byte is part of a replicate run
+    // Handle cases where the last byte is continuation of a replicate run
     //  such as when 129 0x00 bytes -> replicate(128) + literal(1)
-    // Handle cases where replicate run is 0x00 0x00 -> replicate(2)
     if replicate == 1 {
         replicate = 0;
         literal = 1;
@@ -603,27 +838,15 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
 
     if replicate > 1 {
         // Write out and return
-        // `replicate` must be at least 1 or we overflow
-        // Eh, the math is out somewhere...
-        // 1 -> copy 2
-        // 129 to 255 -> replicate run
+        // `replicate` must be at least 2 or we overflow
         dst.push(257u8.wrapping_sub(replicate));
         dst.push(current);
-    // else if replicate == 1 do what?
     } else if literal > 0 {
         // Write out and return
         // `literal` must be at least 1 or we undeflow
-        // 0 to 127 -> literal run
         dst.push(literal - 1u8);
-        for idx in (MAX_SRC - usize::from(literal))..MAX_SRC {
-            dst.push(src[idx]);
-        }
+        dst.extend(&src[MAX_SRC - usize::from(literal)..]);
     }
-
-    println!(
-        "  Return      - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
-        ii, MAX_SRC, previous, current, literal, replicate
-    );
 
     Ok(())
 }
@@ -636,6 +859,7 @@ fn _rle(_: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(decode_frame, m)?).unwrap();
 
     m.add_function(wrap_pyfunction!(encode_row, m)?).unwrap();
+    m.add_function(wrap_pyfunction!(encode_segment, m)?).unwrap();
     m.add_function(wrap_pyfunction!(encode_frame, m)?).unwrap();
 
     Ok(())

@@ -2,8 +2,22 @@
 
 import numpy as np
 import pytest
+import sys
 
-from rle._rle import encode_row
+from pydicom import dcmread
+from pydicom.data import get_testdata_file
+from pydicom.encaps import defragment_data
+from pydicom.pixel_data_handlers.util import (
+    pixel_dtype, reshape_pixel_array
+)
+
+from rle.data import get_indexed_datasets
+from rle._rle import (
+    encode_row, encode_segment, decode_segment, encode_frame, decode_frame
+)
+
+
+INDEX = get_indexed_datasets('1.2.840.10008.1.2.5')
 
 
 # Tests for RLE encoding
@@ -13,6 +27,7 @@ REFERENCE_ENCODE_ROW = [
     # Replicate run tests
     # 2 (min) replicate, could also be a 2 (min) literal 0x00 0x00
     pytest.param([0] * 2, b'\xff\x00', id='1'),
+    pytest.param([255] * 2, b'\xff\xFF', id='1b'),
     pytest.param([0] * 3, b'\xfe\x00', id='2'),
     pytest.param([0] * 64, b'\xc1\x00', id='3'),
     pytest.param([0] * 127, b'\x82\x00', id='4'),
@@ -27,6 +42,7 @@ REFERENCE_ENCODE_ROW = [
     # Literal run tests
     # 1 (min) literal
     pytest.param([0], b'\x00\x00', id='9'),
+    pytest.param([255], b'\x00\xff', id='9b'),
     pytest.param([0, 1], b'\x01\x00\x01', id='10'),
     pytest.param([0, 1, 2], b'\x02\x00\x01\x02', id='11'),
     pytest.param([0, 1] * 32, b'\x3f' + b'\x00\x01' * 32, id='12'),
@@ -90,39 +106,145 @@ class TestEncodeRow:
         assert ref == encode_row(row.tobytes())
 
 
-@pytest.mark.skip()
+def test_encode_segment():
+    data = bytes([0] * 128 + [1, 2] * 64) * 20
+    #data = np.asarray(data, dtype='uint8').tobytes()
+    result = encode_segment(data, 512)
+    print(len(data))
+    print(data[:50])
+    print(result[:50])
+    out = decode_segment(result)
+    assert data == out
+
+
+def test_encode_frame():
+    # u16, little endian, 3 spp
+    #ds = dcmread(get_testdata_file("SC_rgb_16bit.dcm"))
+    # u16, big endian, 3 spp,
+    ds = INDEX["SC_rgb_rle_16bit.dcm"]['ds']
+    #b = defragment_data(ds.PixelData)
+    #print(' '.join([f"{ii}" for ii in b[:64]]))
+    arr_be_a = ds.pixel_array
+    arr_be_a[0, 0, 0] = 10
+    byteorder = arr_be_a.dtype.byteorder
+
+    # TODO: Add to utils function
+    # maybe check whether C or F ordering too?
+    if byteorder == '=':
+        byteorder = '<' if sys.byteorder == "little" else '>'
+
+    print(arr_be_a.tobytes()[:120])
+
+    frame_be = encode_frame(
+        arr_be_a.tobytes(),
+        ds.Rows,
+        ds.Columns,
+        ds.SamplesPerPixel,
+        ds.BitsAllocated,
+        byteorder
+    )
+
+    out_be = decode_frame(frame_be, ds.Rows * ds.Columns, ds.BitsAllocated)
+    dtype = pixel_dtype(ds).newbyteorder('>')
+    arr_be = np.frombuffer(out_be, dtype)
+    arr_be = reshape_pixel_array(ds, arr_be)
+
+
+    ds = dcmread(get_testdata_file("SC_rgb_16bit.dcm"))
+    arr_le_a = ds.pixel_array
+    arr_le_a[0, 0, 0] = 10
+
+    byteorder = arr_le_a.dtype.byteorder
+    if byteorder == '=':
+        byteorder = '<' if sys.byteorder == "little" else '>'
+
+    print(arr_le_a.tobytes()[:120])
+
+    frame_le = encode_frame(
+        arr_le_a.tobytes(),
+        ds.Rows,
+        ds.Columns,
+        ds.SamplesPerPixel,
+        ds.BitsAllocated,
+        byteorder
+    )
+
+    out_le = decode_frame(frame_le, ds.Rows * ds.Columns, ds.BitsAllocated)
+    dtype = pixel_dtype(ds).newbyteorder('>')
+    arr_le = np.frombuffer(out_le, dtype)
+
+    if ds.SamplesPerPixel == 1:
+        arr_le = arr_le.reshape(ds.Rows, ds.Columns)
+    else:
+        # RLE is planar configuration 1
+        arr_le = np.reshape(arr_le, (ds.SamplesPerPixel, ds.Rows, ds.Columns))
+        arr_le = arr_le.transpose(1, 2, 0)
+
+
+    import matplotlib.pyplot as plt
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    ax1.imshow(arr_be)
+    ax2.imshow(arr_le)
+    plt.show()
+
+    assert out_le == out_be
+
+
+
+def test_numpy():
+    #ds = INDEX["SC_rgb_rle_16bit.dcm"]['ds']
+    ds = dcmread(get_testdata_file("SC_rgb_16bit.dcm"))
+    arr = ds.pixel_array
+    arr[0, 0, 0] = 10
+    print(arr)
+    print(arr.tobytes()[:20])
+
+    # [Channel][Column index][byte order]-[Row index]
+    # spp 3, bpp 1, 100x100
+    # R0-0, G0-0, B0-0, ..., B99-0, R0-1, G0-1, B0-1, ..., B99-1, ...
+
+    # Big endian byte order
+    # spp 3, bpp 2, 100x100: a = MSB, b = LSB
+    # R0a-0, R0b-0, G0a-0, G0b-0, B0a-0, B0a-0, ..., B99a-0, B99b-0, R0a-1, ...
+
+    # Little endian byte order
+    # spp 3, bpp 2, 100x100: a = MSB, b = LSB
+    # R0b-0, R0a-0, G0b-0, G0a-0, B0b-0, B0a-0, ..., B99b-0, B99a-0, R0b-1, ...
+
+
+
 class TestEncodeSegment:
-    """Tests for rle_handler._rle_encode_segment."""
+    """Tests for _rle.encode_segment."""
     def test_one_row(self):
         """Test encoding data that contains only a single row."""
-        ds = dcmread(RLE_8_1_1F)
+        ds = INDEX["OBXXXX1A_rle.dcm"]['ds']
         pixel_data = defragment_data(ds.PixelData)
-        decoded = _rle_decode_segment(pixel_data[64:])
+        decoded = decode_segment(pixel_data[64:])
         assert ds.Rows * ds.Columns == len(decoded)
         arr = np.frombuffer(decoded, 'uint8').reshape(ds.Rows, ds.Columns)
 
         # Re-encode a single row of the decoded data
         row = arr[0]
         assert (ds.Columns,) == row.shape
-        encoded = _rle_encode_segment(row)
+        encoded = encode_segment(row.tobytes(), ds.Columns)
 
         # Decode the re-encoded data and check that it's the same
-        redecoded = _rle_decode_segment(encoded)
+        redecoded = decode_segment(encoded)
         assert ds.Columns == len(redecoded)
         assert decoded[:ds.Columns] == redecoded
 
     def test_cycle(self):
         """Test the decoded data remains the same after encoding/decoding."""
-        ds = dcmread(RLE_8_1_1F)
+        ds = INDEX["OBXXXX1A_rle.dcm"]['ds']
         pixel_data = defragment_data(ds.PixelData)
-        decoded = _rle_decode_segment(pixel_data[64:])
+        decoded = decode_segment(pixel_data[64:])
         assert ds.Rows * ds.Columns == len(decoded)
         arr = np.frombuffer(decoded, 'uint8').reshape(ds.Rows, ds.Columns)
         # Re-encode the decoded data
-        encoded = _rle_encode_segment(arr)
+        encoded = encode_segment(arr.tobytes(), ds.Columns)
 
         # Decode the re-encoded data and check that it's the same
-        redecoded = _rle_decode_segment(encoded)
+        redecoded = decode_segment(encoded)
         assert ds.Rows * ds.Columns == len(redecoded)
         assert decoded == redecoded
 

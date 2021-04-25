@@ -136,7 +136,7 @@ class TestDecodeFrame:
 
     def test_invalid_samples_px_raises(self):
         """Test exception if samples per px not 1 or 3."""
-        msg = r"The \(0028,0002\) 'Samples Per Pixel' must be 1 or 3"
+        msg = r"The \(0028,0002\) 'Samples per Pixel' must be 1 or 3"
         d = self.as_bytes([64, 70])
         with pytest.raises(ValueError, match=msg):
             decode_frame(d + b'\x00' * 8, 1, 8)
