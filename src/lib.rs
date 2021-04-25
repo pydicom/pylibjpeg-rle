@@ -502,7 +502,6 @@ fn _encode_frame(
     let r = usize::try_from(rows).unwrap();
     let c = usize::try_from(cols).unwrap();
 
-    println!("{}", src.len());
     if src.len() != r * c * usize::from(spp * bytes_per_pixel) {
         return err_invalid_parameters
     }

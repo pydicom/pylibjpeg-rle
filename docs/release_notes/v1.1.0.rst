@@ -1,0 +1,11 @@
+.. _v1.1.0:
+
+1.1.0
+=====
+
+Enhancements
+............
+
+* Added support for *RLE Lossless* encoding of *Pixel Data*
+* Added :func:`~rle.utils.encode_array` generator for standalone encoding
+* Added :func:`~rle.utils.encode_pixel_data` entry point for encoding

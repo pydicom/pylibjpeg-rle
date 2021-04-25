@@ -49,22 +49,16 @@ Time per 1000 decodes, pydicom's NumPy RLE handler vs. pylibjpeg-rle
 
 #### Encoding
 
-Time per 1000 encodes
+Time per 1000 encodes, pydicom's NumPy RLE handler vs. pylibjpeg-rle
 
-| Dataset                     | Pixels  | Bytes   | NumPy  | pylibjpeg-rle |
-| ---                         | ---     | ---     | ---    | ---           |
-| OBXXXX1A_rle.dcm            | 480,000 | 480,000 |  s |         s |
-| OBXXXX1A_rle_2frame.dcm     | 960,000 | 960,000 |  s |         s |
-| SC_rgb_rle.dcm              |  10,000 |  30,000 |  s |         s |
-| SC_rgb_rle_2frame.dcm       |  20,000 |  60,000 |  s |         s |
-| MR_small_RLE.dcm            |   4,096 |   8,192 |  s |         s |
-| emri_small_RLE.dcm          |  40,960 |  81,920 |  s |         s |
-| SC_rgb_rle_16bit.dcm        |  10,000 |  60,000 |  s |         s |
-| SC_rgb_rle_16bit_2frame.dcm |  20,000 | 120,000 |  s |         s |
-| rtdose_rle_1frame.dcm       |     100 |     400 |  s |         s |
-| rtdose_rle.dcm              |   1,500 |   6,000 |  s |         s |
-| SC_rgb_rle_32bit.dcm        |  10,000 | 120,000 |  s |         s |
-| SC_rgb_rle_32bit_2frame.dcm |  20,000 | 240,000 |  s |         s |
+| Dataset            | Pixels  | Bytes   | NumPy  | pylibjpeg-rle |
+| ---                | ---     | ---     | ---    | ---           |
+| OBXXXX1A.dcm       | 480,000 | 480,000 | 30.7 s |       1.36 s  |
+| SC_rgb.dcm         |  10,000 |  30,000 | 1.80 s |       0.09 s  |
+| MR_small.dcm       |   4,096 |   8,192 | 2.29 s |       0.04 s  |
+| SC_rgb_16bit.dcm   |  10,000 |  60,000 | 3.57 s |       0.17 s  |
+| rtdose_1frame.dcm  |     100 |     400 | 0.19 s |       0.003 s |
+| SC_rgb_32bit.dcm   |  10,000 | 120,000 | 7.20 s |       0.33 s  |
 
 ### Usage
 #### Decoding
@@ -96,5 +90,23 @@ for arr in generate_frames(ds):
 ```
 
 #### Encoding
-##### With pylibjpeg
 ##### Standalone with pydicom
+
+```python
+from pydicom import dcmread
+from pydicom.data import get_testdata_file
+from pydicom.encaps import encapsulate
+from pydicom.uid import RLELossless
+
+from rle import encode_array
+
+# Get an uncompressed numpy ndarray
+ds = dcmread(get_testdata_file("OBXXXX1A.dcm"))
+arr = ds.pixel_array
+
+# This is a bit silly -> switch ds in, kwargs pure optional
+# `encode_array` is a generator function that yields encoded frames
+ds.PixelData = encapsulate([enc for enc in encode_array(arr, **{'ds': ds})])
+ds.file_meta.TransferSyntaxUID = RLELossless
+
+```
