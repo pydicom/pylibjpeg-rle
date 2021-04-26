@@ -8,17 +8,31 @@ use pyo3::types::{PyBytes, PyByteArray};
 use pyo3::exceptions::{PyValueError};
 
 
-//use rayon::prelude::*;
+// Python _rle module members
+#[pymodule]
+fn _rle(_: Python, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(parse_header, m)?).unwrap();
+    m.add_function(wrap_pyfunction!(decode_segment, m)?).unwrap();
+    m.add_function(wrap_pyfunction!(decode_frame, m)?).unwrap();
+
+    m.add_function(wrap_pyfunction!(encode_row, m)?).unwrap();
+    m.add_function(wrap_pyfunction!(encode_segment, m)?).unwrap();
+    m.add_function(wrap_pyfunction!(encode_frame, m)?).unwrap();
+
+    Ok(())
+}
+
 
 // RLE Decoding
+// ------------
 
 #[pyfunction]
-fn parse_header(enc: &[u8]) -> PyResult<Vec<u32>> {
+fn parse_header(src: &[u8]) -> PyResult<Vec<u32>> {
     /* Return the segment offsets from the RLE header.
 
     Parameters
     ----------
-    b : bytes
+    src : bytes
         The 64 byte RLE header.
 
     Returns
@@ -26,11 +40,11 @@ fn parse_header(enc: &[u8]) -> PyResult<Vec<u32>> {
     List[int]
         All 15 segment offsets found in the header.
     */
-    if enc.len() != 64 {
+    if src.len() != 64 {
         return Err(PyValueError::new_err("The RLE header must be 64 bytes long"))
     }
 
-    let header = <&[u8; 64]>::try_from(&enc[0..64]).unwrap();
+    let header = <&[u8; 64]>::try_from(&src[0..64]).unwrap();
     let mut offsets: Vec<u32> = Vec::new();
     offsets.extend(&_parse_header(header)[..]);
 
@@ -38,55 +52,59 @@ fn parse_header(enc: &[u8]) -> PyResult<Vec<u32>> {
 }
 
 
-fn _parse_header(b: &[u8; 64]) -> [u32; 15] {
+fn _parse_header(src: &[u8; 64]) -> [u32; 15] {
     /* Return the segment offsets from the RLE header.
 
     Parameters
     ----------
-    b
+    src
         The 64 byte RLE header.
     */
     return [
-        u32::from_le_bytes([ b[4],  b[5],  b[6],  b[7]]),
-        u32::from_le_bytes([ b[8],  b[9], b[10], b[11]]),
-        u32::from_le_bytes([b[12], b[13], b[14], b[15]]),
-        u32::from_le_bytes([b[16], b[17], b[18], b[19]]),
-        u32::from_le_bytes([b[20], b[21], b[22], b[23]]),
-        u32::from_le_bytes([b[24], b[25], b[26], b[27]]),
-        u32::from_le_bytes([b[28], b[29], b[30], b[31]]),
-        u32::from_le_bytes([b[32], b[33], b[34], b[35]]),
-        u32::from_le_bytes([b[36], b[37], b[38], b[39]]),
-        u32::from_le_bytes([b[40], b[41], b[42], b[43]]),
-        u32::from_le_bytes([b[44], b[45], b[46], b[47]]),
-        u32::from_le_bytes([b[48], b[49], b[50], b[51]]),
-        u32::from_le_bytes([b[52], b[53], b[54], b[55]]),
-        u32::from_le_bytes([b[56], b[57], b[58], b[59]]),
-        u32::from_le_bytes([b[60], b[61], b[62], b[63]])
+        u32::from_le_bytes([ src[4],  src[5],  src[6],  src[7]]),
+        u32::from_le_bytes([ src[8],  src[9], src[10], src[11]]),
+        u32::from_le_bytes([src[12], src[13], src[14], src[15]]),
+        u32::from_le_bytes([src[16], src[17], src[18], src[19]]),
+        u32::from_le_bytes([src[20], src[21], src[22], src[23]]),
+        u32::from_le_bytes([src[24], src[25], src[26], src[27]]),
+        u32::from_le_bytes([src[28], src[29], src[30], src[31]]),
+        u32::from_le_bytes([src[32], src[33], src[34], src[35]]),
+        u32::from_le_bytes([src[36], src[37], src[38], src[39]]),
+        u32::from_le_bytes([src[40], src[41], src[42], src[43]]),
+        u32::from_le_bytes([src[44], src[45], src[46], src[47]]),
+        u32::from_le_bytes([src[48], src[49], src[50], src[51]]),
+        u32::from_le_bytes([src[52], src[53], src[54], src[55]]),
+        u32::from_le_bytes([src[56], src[57], src[58], src[59]]),
+        u32::from_le_bytes([src[60], src[61], src[62], src[63]])
     ]
 }
 
 
 #[pyfunction]
 fn decode_frame<'a>(
-    enc: &[u8], px_per_sample: u32, bits_per_px: u8, py: Python<'a>
+    src: &[u8], nr_pixels: u32, bpp: u8, byteorder: char, py: Python<'a>
 ) -> PyResult<&'a PyByteArray> {
     /* Return the decoded frame.
 
     Parameters
     ----------
-    enc : bytes
+    src : bytes
         The RLE encoded frame.
-    px_per_sample : int
-        The number of pixels per sample (rows x columns).
-    bits_per_px : int
-        The number of bits per pixel, should be a multiple of 8.
+    nr_pixels : int
+        The total number of pixels in the frame (rows x columns),
+        maximum (2^32 - 1).
+    bpp : int
+        The number of bits per pixel, supported values 8, 16, 32, 64.
+    byteorder : str
+        The byte order of the returned data, '<' for little endian, '>' for
+        big endian.
 
     Returns
     -------
     bytearray
         The decoded frame.
     */
-    match _decode_frame(enc, px_per_sample, bits_per_px) {
+    match _decode_frame(src, nr_pixels, bpp, byteorder) {
         Ok(frame) => return Ok(PyByteArray::new(py, &frame)),
         Err(err) => return Err(PyValueError::new_err(err.to_string())),
     }
@@ -94,35 +112,28 @@ fn decode_frame<'a>(
 
 
 fn _decode_frame(
-    enc: &[u8], px_per_sample: u32, bits_per_px: u8
+    src: &[u8], nr_pixels: u32, bpp: u8, byteorder: char
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     /* Return the decoded frame.
 
     Parameters
     ----------
-    enc
+    src
         The RLE encoded frame.
-    px_per_sample
-        The number of pixels per sample (rows x columns), maximum (2^32 - 1).
-    bits_per_px
+    nr_pixels
+        The total number of pixels in the frame (rows x columns).
+    bpp
         The number of bits per pixel, should be a multiple of 8 and no larger
         than 64.
+    byteorder
+        The byte order of the decoded data, '<' for little endian, '>' for
+        big endian.
     */
 
     // Pre-define our errors for neatness
-    let err_bits_zero = Err(
+    let err_invalid_bits_allocated = Err(
         String::from(
-            "The (0028,0100) 'Bits Allocated' value must be greater than 0"
-        ).into(),
-    );
-    let err_bits_not_octal = Err(
-        String::from(
-            "The (0028,0100) 'Bits Allocated' value must be a multiple of 8"
-        ).into(),
-    );
-    let err_invalid_bytes = Err(
-        String::from(
-            "A (0028,0100) 'Bits Allocated' value greater than 64 is not supported"
+            "The (0028,0100) 'Bits Allocated' value must be 8, 16, 32 or 64"
         ).into()
     );
     let err_invalid_offset = Err(
@@ -139,27 +150,37 @@ fn _decode_frame(
             "The decoded segment length does not match the expected length"
         ).into()
     );
+    let err_invalid_byteorder = Err(
+        String::from("'byteorder' must be '>' or '<'").into()
+    );
 
     // Ensure we have a valid bits/px value
-    match bits_per_px {
-        0 => return err_bits_zero,
-        _ => match bits_per_px % 8 {
+    match bpp {
+        0 => return err_invalid_bits_allocated,
+        _ => match bpp % 8 {
             0 => {},
-            _ => return err_bits_not_octal
+            _ => return err_invalid_bits_allocated
         }
     }
 
-    // Ensure `bytes_per_pixel` is in [1, 8]
-    let bytes_per_pixel: u8 = bits_per_px / 8;
-    if bytes_per_pixel > 8 { return err_invalid_bytes }
+    // Ensure `bytes_per_pixel` is in [1, 2, 4, 8]
+    let bytes_per_pixel: u8 = bpp / 8;
+    match bytes_per_pixel {
+        1 => {},
+        2 | 4 | 8 => match byteorder {
+            '>' | '<' => {},
+            _ => return err_invalid_byteorder
+        },
+        _ => return err_invalid_bits_allocated
+    }
 
     // Parse the RLE header and check results
     // --------------------------------------
     // Ensure we have at least enough data for the RLE header
-    let encoded_length = enc.len();
+    let encoded_length = src.len();
     if encoded_length < 64 { return err_insufficient_data }
 
-    let header = <&[u8; 64]>::try_from(&enc[0..64]).unwrap();
+    let header = <&[u8; 64]>::try_from(&src[0..64]).unwrap();
     let all_offsets: [u32; 15] = _parse_header(header);
 
     // First offset must always be 64
@@ -186,15 +207,15 @@ fn _decode_frame(
     }
 
     // Check the samples per pixel is conformant
-    let samples_per_px: u8 = nr_segments / bytes_per_pixel;
-    match samples_per_px {
+    let spp: u8 = nr_segments / bytes_per_pixel;
+    match spp {
         1 | 3 => {},
         _ => return err_invalid_nr_samples
     }
 
     // Watch for overflow here; u32 * u32 -> u64
     let expected_length = usize::try_from(
-        px_per_sample * u32::from(bytes_per_pixel * samples_per_px)
+        nr_pixels * u32::from(bytes_per_pixel * spp)
     ).unwrap();
 
     // Pre-allocate a vector for the decoded frame
@@ -219,16 +240,25 @@ fn _decode_frame(
 
     // Decode each segment and place it into the vector
     // ------------------------------------------------
-    let pps = usize::try_from(px_per_sample).unwrap();
+    let pps = usize::try_from(nr_pixels).unwrap();
     // Concatenate sample planes into a frame
-    for sample in 0..samples_per_px {  // 0 or (0, 1, 2)
+    for sample in 0..spp {  // 0 or (0, 1, 2)
         // Sample offset
         let so = usize::from(sample * bytes_per_pixel) * pps;
 
         // Interleave the segments into a sample plane
         for byte_offset in 0..bytes_per_pixel {  // 0, [1, 2, 3, ..., 7]
-            // idx should be in range [0, 23], but max is 15
-            let idx = usize::from(sample * bytes_per_pixel + byte_offset);
+            // idx should be in range [0, 15]
+            let idx: usize;
+            if byteorder == '>' { // big-endian
+                // e.g. 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+                idx = usize::from(sample * bytes_per_pixel + byte_offset);
+            } else { // little-endian
+                // e.g. 3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8
+                idx = usize::from(
+                    bytes_per_pixel - byte_offset + bytes_per_pixel * sample
+                ) - 1;
+            }
 
             // offsets[idx] is u32 -> usize not guaranteed
             let start = usize::try_from(offsets[idx]).unwrap();
@@ -236,7 +266,7 @@ fn _decode_frame(
 
             // Decode the segment into the frame
             let len = _decode_segment_into_frame(
-                <&[u8]>::try_from(&enc[start..end]).unwrap(),
+                <&[u8]>::try_from(&src[start..end]).unwrap(),
                 &mut frame,
                 usize::from(bytes_per_pixel),
                 usize::from(byte_offset) + so
@@ -250,15 +280,15 @@ fn _decode_frame(
 
 
 fn _decode_segment_into_frame(
-    enc: &[u8], frame: &mut Vec<u8>, bpp: usize, initial_offset: usize
+    src: &[u8], dst: &mut Vec<u8>, bpp: usize, initial_offset: usize
 ) -> Result<usize, Box<dyn Error>> {
     /* Decode an RLE segment directly into a frame.
 
     Parameters
     ----------
-    enc
+    src
         The encoded segment.
-    frame
+    dst
         The Vec<u8> for the decoded frame.
     bpp
         The number of bytes per pixel.
@@ -273,8 +303,8 @@ fn _decode_segment_into_frame(
     let mut idx = initial_offset;
     let mut pos = 0;
     let mut header_byte: usize;
-    let max_offset = enc.len() - 1;
-    let max_frame = frame.len();
+    let max_offset = src.len() - 1;
+    let max_frame = dst.len();
     let mut op_len: usize;
     let err_eod = Err(
         String::from(
@@ -292,7 +322,7 @@ fn _decode_segment_into_frame(
     loop {
         // `header_byte` is equivalent to N in the DICOM Standard
         // usize is at least u8
-        header_byte = usize::from(enc[pos]);
+        header_byte = usize::from(src[pos]);
         pos += 1;
         if header_byte > 128 {
             // Extend by copying the next byte (-N + 1) times
@@ -308,7 +338,7 @@ fn _decode_segment_into_frame(
             }
 
             for _ in 0..op_len {
-                frame[idx] = enc[pos];
+                dst[idx] = src[pos];
                 idx += bpp;
             }
             pos += 1;
@@ -324,7 +354,7 @@ fn _decode_segment_into_frame(
             }
 
             for ii in pos..pos + op_len {
-                frame[idx] = enc[ii];
+                dst[idx] = src[ii];
                 idx += bpp;
             }
             pos += header_byte + 1;
@@ -338,12 +368,12 @@ fn _decode_segment_into_frame(
 
 
 #[pyfunction]
-fn decode_segment<'a>(enc: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
+fn decode_segment<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
     /* Return a decoded RLE segment as bytes.
 
     Parameters
     ----------
-    enc : bytes
+    src : bytes
         The encoded segment.
 
     Returns
@@ -351,27 +381,27 @@ fn decode_segment<'a>(enc: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
     bytes
         The decoded segment.
     */
-    let mut segment: Vec<u8> = Vec::new();
-    match _decode_segment(enc, &mut segment) {
-        Ok(()) => return Ok(PyBytes::new(py, &segment[..])),
+    let mut dst: Vec<u8> = Vec::new();
+    match _decode_segment(src, &mut dst) {
+        Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
         Err(err) => return Err(PyValueError::new_err(err.to_string())),
     }
 }
 
 
-fn _decode_segment(enc: &[u8], out: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
+fn _decode_segment(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     /* Decode an RLE segment.
 
     Parameters
     ----------
-    enc
+    src
         The encoded segment.
-    out
+    dst
         A Vec<u8> for the decoded segment.
     */
     let mut pos = 0;
     let mut header_byte: usize;
-    let max_offset = enc.len() - 1;
+    let max_offset = src.len() - 1;
     let err = Err(
         String::from(
             "The end of the data was reached before the segment was \
@@ -382,7 +412,7 @@ fn _decode_segment(enc: &[u8], out: &mut Vec<u8>) -> Result<(), Box<dyn Error>> 
     loop {
         // `header_byte` is equivalent to N in the DICOM Standard
         // usize is at least u8
-        header_byte = usize::from(enc[pos]);
+        header_byte = usize::from(src[pos]);
         pos += 1;
         if header_byte > 128 {
             if pos > max_offset {
@@ -391,14 +421,14 @@ fn _decode_segment(enc: &[u8], out: &mut Vec<u8>) -> Result<(), Box<dyn Error>> 
             // Extend by copying the next byte (-N + 1) times
             // however since using uint8 instead of int8 this will be
             // (256 - N + 1) times
-            out.extend(vec![enc[pos]; 257 - header_byte]);
+            dst.extend(vec![src[pos]; 257 - header_byte]);
             pos += 1;
         } else if header_byte < 128 {
             if (pos + header_byte) > max_offset {
                 return err
             }
             // Extend by literally copying the next (N + 1) bytes
-            out.extend(&enc[pos..(pos + header_byte + 1)]);
+            dst.extend(&src[pos..(pos + header_byte + 1)]);
             pos += header_byte + 1;
         } // header_byte == 128 is noop
 
@@ -410,13 +440,38 @@ fn _decode_segment(enc: &[u8], out: &mut Vec<u8>) -> Result<(), Box<dyn Error>> 
 
 
 // RLE Encoding
+// ------------
+
 #[pyfunction]
 fn encode_frame<'a>(
-    enc: &[u8], rows: u16, cols: u16, spp: u8, bpp: u8, byteorder: char, py: Python<'a>
+    src: &[u8], rows: u16, cols: u16, spp: u8, bpp: u8, byteorder: char, py: Python<'a>
 ) -> PyResult<&'a PyBytes> {
-    // Pre-allocate some space for the encoded data - worst case scenario
+    /* Return RLE encoded `src` as bytes.
+
+    Parameters
+    ----------
+    src : bytes
+        The data to be RLE encoded, ordered as R1, G1, B1, R2, G2, B2, ...,
+        Rn, Gn, Bn (i.e. Planar Configuration 0).
+    rows : int
+        The number of rows in the data.
+    cols : int
+        The number of columns in the data.
+    spp : int
+        The number of samples per pixel, supported values are 1 or 3.
+    bpp : int
+        The number of bits per pixel, supported values are 8, 16, 32 and 64.
+    byteorder : str
+        Required if `bpp` is greater than 1, '>' if `src` is in big endian byte
+        order, '<' if little endian.
+
+    Returns
+    -------
+    bytes
+        The RLE encoded frame.
+    */
     let mut dst: Vec<u8> = Vec::new();
-    match _encode_frame(enc, &mut dst, rows, cols, spp, bpp, byteorder) {
+    match _encode_frame(src, &mut dst, rows, cols, spp, bpp, byteorder) {
         Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
         Err(err) => return Err(PyValueError::new_err(err.to_string())),
     }
@@ -431,10 +486,10 @@ fn _encode_frame(
     Parameters
     ----------
     src
-        The data to be RLE encoded, ordered as R1, G1, B1, R2, G2, B2, ..., Rn, Gn, Bn
-        (i.e. Planar Configuration 0).
+        The data to be RLE encoded, ordered as R1, G1, B1, R2, G2, B2, ...,
+        Rn, Gn, Bn (i.e. Planar Configuration 0).
     dst
-
+        The vector storing the encoded data.
     rows
         The number of rows in the data.
     cols
@@ -525,16 +580,15 @@ fn _encode_frame(
         }
     }
 
+    // Encode the data and update the RLE header segment offsets
     for idx in 0..usize::from(nr_segments) {
-        // Convert to 4x le ordered u8s and update RLE header
+        // Update RLE header: convert current offset to 4x le ordered u8s
         let current_offset = (u32::try_from(dst.len()).unwrap()).to_le_bytes();
         for ii in idx * 4 + 4..idx * 4 + 8 {
-            // idx = 0: 4, 5, 6, 7 -> 0, 1, 2, 3
-            // idx = 1: 8, 9, 10, 11 -> 0, 1, 2, 3
             dst[ii] = current_offset[ii - idx * 4 - 4];
         }
 
-        // Note the offset start of the `src` iter
+        // Encode! Note the offset start of the `src` iter
         let segment: Vec<u8> = src[start_indices[idx]..]
             .into_iter()
             .step_by(usize::from(spp * bytes_per_pixel))
@@ -548,8 +602,49 @@ fn _encode_frame(
 }
 
 
+fn _encode_segment_from_vector(
+    src: Vec<u8>, dst: &mut Vec<u8>, cols: u16
+) -> Result<(), Box<dyn Error>> {
+    /* RLE encode a segment.
+
+    Parameters
+    ----------
+    src
+        The data to be encoded.
+    dst
+        The destination for the encoded data.
+    cols
+        The length of each row in the `src`.
+    */
+    let row_len: usize = usize::try_from(cols).unwrap();
+    for row_idx in 0..(src.len() / row_len) {
+        let offset = row_idx * row_len;
+        _encode_row(&src[offset..offset + row_len], dst)?;
+    }
+
+    // Each segment must be even length or padded to even length with zero
+    if dst.len() % 2 != 0 { dst.push(0); }
+
+    Ok(())
+}
+
+
 #[pyfunction]
 fn encode_segment<'a>(src: &[u8], cols: u16, py: Python<'a>) -> PyResult<&'a PyBytes> {
+    /* Return an RLE encoded segment as bytes.
+
+    Parameters
+    ----------
+    src : bytes
+        The segment data to be encoded.
+    cols : int
+        The length of each row in the `src`.
+
+    Returns
+    -------
+    bytes
+        An RLE encoded segment
+    */
     let mut dst = Vec::new();
     match _encode_segment_from_array(src, &mut dst, cols) {
         Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
@@ -597,48 +692,9 @@ fn _encode_segment_from_array(
 }
 
 
-fn _encode_segment_from_vector(
-    src: Vec<u8>, dst: &mut Vec<u8>, cols: u16
-) -> Result<(), Box<dyn Error>> {
-    /*
-
-    Parameters
-    ----------
-    src
-        The data to be encoded.
-    dst
-        The destination for the encoded data.
-    cols
-        The length of each row in the `src`.
-    */
-    let err_invalid_length = Err(
-        String::from("The (0028,0011) 'Columns' value is invalid").into()
-    );
-
-    let row_len: usize = usize::try_from(cols).unwrap();
-
-    if src.len() % row_len != 0 { return err_invalid_length }
-
-    let nr_rows = src.len() / row_len;
-    let mut offset: usize;
-
-    for row_idx in 0..nr_rows {
-        offset = row_idx * row_len;
-        _encode_row(&src[offset..offset + row_len], dst)?;
-    }
-
-    // Each segment must be even length or padded to even length with zero
-    if dst.len() % 2 != 0 {
-        dst.push(0);
-    }
-
-    Ok(())
-}
-
-
 #[pyfunction]
 fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
-    /* Return RLE encoded data as Python bytes.
+    /* Return `src` as RLE encoded bytes.
 
     Parameters
     ----------
@@ -650,11 +706,7 @@ fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
     bytes
         The RLE encoded data.
     */
-    // Assuming all literal runs, `dst` can never be greater than
-    // ceil(src.len() / 128) + src.len()
-
-    // Close enough...
-    let mut dst = Vec::with_capacity(src.len() + src.len() / 128 + 1);
+    let mut dst = Vec::new();
     match _encode_row(src, &mut dst) {
         Ok(()) => return Ok(PyBytes::new(py, &dst[..])),
         Err(err) => return Err(PyValueError::new_err(err.to_string())),
@@ -675,19 +727,13 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     */
 
     // Reminders:
-    // * Each image row is encoded separately
-    // * Literal runs are a non-repetitive stream
-    // * Replicate runs are a repetitive stream
-    // * 2 byte repeats are encoded as replicate runs
     // * Maximum length of literal/replicate runs is 128 bytes
-
-    // Replicate run: dst += [count, value]
-    //   count: number of bytes in the run (i8 = -replicate + 1)
-    //   value: the value of the repeating byte
-
-    // Literal run: dst += [count, a, b, c, ...]
-    //   count: number of bytes in the literal stream (i8 = literal - 1)
-    //   a, b, c, ...: the literal stream
+    // * Replicate run: dst += [count, value]
+    //     count: number of bytes in the run (i8 = -replicate + 1)
+    //     value: the value of the repeating byte
+    // * Literal run: dst += [count, a, b, c, ...]
+    //     count: number of bytes in the literal stream (i8 = literal - 1)
+    //     a, b, c, ...: the literal stream
 
     match src.len() {
         0 => { return Ok(()) },
@@ -718,11 +764,6 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     loop {
         current = src[ii];
 
-        //println!(
-        //    "Start of loop - ii: {}/{}, prv: {}, cur: {}, l: {}, r: {}",
-        //    ii, src_length, previous, current, literal, replicate
-        //);
-
         // Run type switching/control
         if current == previous {
             if literal == 1 {
@@ -731,8 +772,8 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
                 replicate = 1;
             } else if literal > 1 {
                 // Write out literal run and reset
+                // `literal` must be at least 1 or we undeflow
                 dst.push(literal - 1u8);
-                // Hmm, check the indexing here...
                 dst.extend(&src[ii - usize::from(literal)..ii]);
                 literal = 0;
              }
@@ -763,7 +804,8 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
         } else if literal == max_run_length {
             // Write out literal run and reset
             dst.push(127);
-            // The indexing is different here because ii is the `current` item, not previous
+            // The indexing is different here because ii is the `current`
+            //   item, not previous
             dst.extend(&src[ii + 1 - usize::from(literal)..ii + 1]);
             literal = 0;
         } // 128 is noop!
@@ -792,20 +834,6 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
         dst.push(literal - 1u8);
         dst.extend(&src[src_length - usize::from(literal)..]);
     }
-
-    Ok(())
-}
-
-
-#[pymodule]
-fn _rle(_: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(parse_header, m)?).unwrap();
-    m.add_function(wrap_pyfunction!(decode_segment, m)?).unwrap();
-    m.add_function(wrap_pyfunction!(decode_frame, m)?).unwrap();
-
-    m.add_function(wrap_pyfunction!(encode_row, m)?).unwrap();
-    m.add_function(wrap_pyfunction!(encode_segment, m)?).unwrap();
-    m.add_function(wrap_pyfunction!(encode_frame, m)?).unwrap();
 
     Ok(())
 }

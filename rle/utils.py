@@ -25,7 +25,7 @@ def decode_pixel_data(stream: bytes, ds: "Dataset") -> "np.ndarray":
     -------
     numpy.ndarray
         A 1D array of ``numpy.uint8`` containing the decoded frame data,
-        with big-endian encoding and planar configuration 1.
+        with little-endian encoding and planar configuration 1.
 
     Raises
     ------
@@ -33,7 +33,7 @@ def decode_pixel_data(stream: bytes, ds: "Dataset") -> "np.ndarray":
         If the decoding failed.
     """
     return np.frombuffer(
-        decode_frame(stream, ds.Rows * ds.Columns, ds.BitsAllocated),
+        decode_frame(stream, ds.Rows * ds.Columns, ds.BitsAllocated, '<'),
         dtype='uint8'
     )
 
@@ -140,9 +140,7 @@ def encode_pixel_data(stream: bytes, **kwargs) -> bytes:
     return encode_frame(stream, r, c, spp, bpp, kwargs['byteorder'])
 
 
-def generate_frames(
-    ds: "Dataset", reshape: bool = True, rle_segment_order: str = '>'
-) -> "np.ndarray":
+def generate_frames(ds: "Dataset", reshape: bool = True) -> "np.ndarray":
     """Yield a *Pixel Data* frame from `ds` as an :class:`~numpy.ndarray`.
 
     Parameters
@@ -155,19 +153,11 @@ def generate_frames(
         If ``True`` (default), then the returned :class:`~numpy.ndarray` will
         be reshaped to the correct dimensions. If ``False`` then no reshaping
         will be performed.
-    rle_segment_order : str
-        The order of segments used by the RLE decoder when dealing with *Bits
-        Allocated* > 8. Each RLE segment contains 8-bits of the pixel data,
-        and segments are supposed to be ordered from MSB to LSB. A value of
-        ``'>'`` means interpret the segments as being in big endian order
-        (default) while a value of ``'<'`` means interpret the segments as
-        being in little endian order which may be possible if the encoded data
-        is non-conformant.
 
     Yields
     -------
     numpy.ndarray
-        A single frame of (7FE0,0010) *Pixel Data* as an
+        A single frame of (7FE0,0010) *Pixel Data* as a little-endian ordered
         :class:`~numpy.ndarray` with an appropriate dtype for the data.
 
     Raises
@@ -204,9 +194,9 @@ def generate_frames(
     r, c = ds.Rows, ds.Columns
     bpp = ds.BitsAllocated
 
-    dtype = pixel_dtype(ds).newbyteorder(rle_segment_order)
+    dtype = pixel_dtype(ds)
     for frame in generate_pixel_data_frame(ds.PixelData, nr_frames):
-        arr = np.frombuffer(decode_frame(frame, r * c, bpp), dtype=dtype)
+        arr = np.frombuffer(decode_frame(frame, r * c, bpp, '<'), dtype=dtype)
 
         if not reshape:
             yield arr
@@ -233,10 +223,10 @@ def pixel_array(ds: "Dataset") -> "np.ndarray":
     Returns
     -------
     numpy.ndarray
-        The contents of (7FE0,0010) *Pixel Data* as an :class:`~numpy.ndarray`
-        with shape (rows, columns), (rows, columns, components), (frames,
-        rows, columns), or (frames, rows, columns, components) depending on
-        the dataset.
+        The contents of (7FE0,0010) *Pixel Data* as a little-endian ordered
+        :class:`~numpy.ndarray` with shape (rows, columns), (rows, columns,
+        components), (frames, rows, columns), or (frames, rows, columns,
+        components) depending on the dataset.
     """
     from pydicom.pixel_data_handlers.util import (
         get_expected_length, reshape_pixel_array, pixel_dtype
@@ -245,8 +235,7 @@ def pixel_array(ds: "Dataset") -> "np.ndarray":
     expected_len = get_expected_length(ds, 'pixels')
     frame_len = expected_len // getattr(ds, "NumberOfFrames", 1)
     # Empty destination array for our decoded pixel data
-    dtype = pixel_dtype(ds).newbyteorder('>')
-    arr = np.empty(expected_len, dtype)
+    arr = np.empty(expected_len, pixel_dtype(ds))
 
     generate_offsets = range(0, expected_len, frame_len)
     for frame, offset in zip(generate_frames(ds, False), generate_offsets):
