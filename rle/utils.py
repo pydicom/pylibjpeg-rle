@@ -52,6 +52,8 @@ def encode_array(
 ) -> Generator[bytes, None, None]:
     """Yield RLE encoded frames from `arr`.
 
+    .. versionadded:: 1.1
+
     Parameters
     ----------
     arr : numpy.ndarray
@@ -107,6 +109,8 @@ def encode_pixel_data(
     **kwargs
 ) -> bytes:
     """Return `src` encoded using the DICOM RLE (PackBits) algorithm.
+
+    .. versionadded:: 1.1
 
     .. warning::
 
@@ -288,6 +292,8 @@ def pixel_array(ds: "Dataset") -> "np.ndarray":
 
 def pixel_data(arr: "np.ndarray", ds: "Dataset") -> bytes:
     """Return `arr` as encapsulated and RLE encoded bytes.
+
+    .. versionadded:: 1.1
 
     Parameters
     ----------
