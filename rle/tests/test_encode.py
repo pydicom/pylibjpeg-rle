@@ -399,3 +399,60 @@ class TestEncodeFrame:
         assert b'\x02\x00\xFF\xFC' == out[68:72]
         assert b'\x02\x00\xFE\x10' == out[72:76]
         assert b'\x02\x00\x0A\x12' == out[76:80]
+
+    def test_invalid_samples_per_pixel_raises(self):
+        """Test exception raised if samples per pixel not valid."""
+        msg = r"The \(0028,0002\) 'Samples per Pixel' must be 1 or 3"
+        with pytest.raises(ValueError, match=msg):
+            encode_frame(b'', 1, 1, 0, 1, '<')
+
+        with pytest.raises(ValueError, match=msg):
+            encode_frame(b'', 1, 1, 2, 1, '<')
+
+        with pytest.raises(ValueError, match=msg):
+            encode_frame(b'', 1, 1, 4, 1, '<')
+
+    def test_invalid_bits_per_pixel_raises(self):
+        """Test exception raised if bits per pixel not valid."""
+        msg = (
+            r"The \(0028,0100\) 'Bits Allocated' value must be 8, 16, 32 or 64"
+        )
+        with pytest.raises(ValueError, match=msg):
+            encode_frame(b'', 1, 1, 1, 0, '<')
+
+        with pytest.raises(ValueError, match=msg):
+            encode_frame(b'', 1, 1, 1, 1, '<')
+
+        with pytest.raises(ValueError, match=msg):
+            encode_frame(b'', 1, 1, 1, 7, '<')
+
+        with pytest.raises(ValueError, match=msg):
+            encode_frame(b'', 1, 1, 1, 9, '<')
+
+        with pytest.raises(ValueError, match=msg):
+            encode_frame(b'', 1, 1, 1, 65, '<')
+
+    def test_invalid_byteorder_raises(self):
+        """Test exception raised if byteorder not valid."""
+        msg = r"'byteorder' must be '>' or '<'"
+        with pytest.raises(ValueError, match=msg):
+            encode_frame(b'', 1, 1, 1, 16, '=')
+
+    def test_invalid_parameters_raises(self):
+        """Test exception raised if parameters not valid."""
+        msg = (
+            r"The length of the data to be encoded is not consistent with the "
+            r"the values of the dataset's 'Rows', 'Columns', 'Samples per "
+            r"Pixel' and 'Bits Allocated' elements"
+        )
+        with pytest.raises(ValueError, match=msg):
+            encode_frame(b'', 1, 1, 1, 16, '<')
+
+    def test_invalid_nr_segments_raises(self):
+        """Test exception raised if too many segments required."""
+        msg = (
+            r"Unable to encode as the DICOM Standard only allows "
+            r"a maximum of 15 segments in RLE encoded data"
+        )
+        with pytest.raises(ValueError, match=msg):
+            encode_frame(b'\x00' * 24, 1, 1, 3, 64, '<')

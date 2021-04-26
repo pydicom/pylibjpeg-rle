@@ -64,7 +64,7 @@ Time per 1000 encodes, pydicom's NumPy RLE handler vs. pylibjpeg-rle
 #### Decoding
 ##### With pylibjpeg
 
-Because pydicom defaults to the NumPy RLE decoder, you must specify the use
+Because pydicom defaults to its own RLE decoder you must specify the use
 of pylibjpeg when decompressing:
 ```python
 from pydicom import dcmread
@@ -92,21 +92,21 @@ for arr in generate_frames(ds):
 #### Encoding
 ##### Standalone with pydicom
 
+Convert uncompressed pixel data to RLE encoding and save:
 ```python
 from pydicom import dcmread
 from pydicom.data import get_testdata_file
-from pydicom.encaps import encapsulate
 from pydicom.uid import RLELossless
 
-from rle import encode_array
+from rle import pixel_data
 
-# Get an uncompressed numpy ndarray
+# Get the uncompressed pixel data
 ds = dcmread(get_testdata_file("OBXXXX1A.dcm"))
 arr = ds.pixel_array
 
-# This is a bit silly -> switch ds in, kwargs pure optional
-# `encode_array` is a generator function that yields encoded frames
-ds.PixelData = encapsulate([enc for enc in encode_array(arr, **{'ds': ds})])
+# RLE encode and encapsulate `arr`
+ds.PixelData = pixel_data(arr, ds)
+# Set the correct *Transfer Syntax UID*
 ds.file_meta.TransferSyntaxUID = RLELossless
-
+ds.save_as('as_rle.dcm')
 ```

@@ -1,57 +1,79 @@
 """Utility functions."""
 
 import sys
-from typing import Generator
+from typing import Generator, Optional
 
 import numpy as np
 
 from rle._rle import decode_frame, decode_segment, encode_frame, encode_segment
 
 
-def decode_pixel_data(stream: bytes, ds: "Dataset") -> "np.ndarray":
+def decode_pixel_data(src: bytes, ds: "Dataset", **kwargs) -> "np.ndarray":
     """Return the decoded RLE Lossless data as a :class:`numpy.ndarray`.
 
     Intended for use with *pydicom* ``Dataset`` objects.
 
     Parameters
     ----------
-    stream : bytes
-        The image frame to be decoded.
+    src : bytes
+        A single encoded image frame to be decoded.
     ds : pydicom.dataset.Dataset
         A :class:`~pydicom.dataset.Dataset` containing the group ``0x0028``
-        elements corresponding to the *Pixel Data*.
+        elements corresponding to the image frame.
+    kwargs : dict, optional
+        A dictionary containing options for the decoder. Current options are:
+
+        * ``{'byteorder': str}`` specify the byte ordering for the decoded data
+        when more than 8 bits per pixel are used, should be '<' for little
+        endian ordering (default) or '>' for big-endian ordering.
 
     Returns
     -------
     numpy.ndarray
         A 1D array of ``numpy.uint8`` containing the decoded frame data,
-        with little-endian encoding and planar configuration 1.
+        with planar configuration 1 and, by default, little-endian byte
+        ordering.
 
     Raises
     ------
     ValueError
         If the decoding failed.
     """
+    byteorder = kwargs.get('byteorder', '<')
+
     return np.frombuffer(
-        decode_frame(stream, ds.Rows * ds.Columns, ds.BitsAllocated, '<'),
+        decode_frame(src, ds.Rows * ds.Columns, ds.BitsAllocated, byteorder),
         dtype='uint8'
     )
 
 
-def encode_array(arr: "np.ndarray", **kwargs) -> Generator[bytes, None, None]:
+def encode_array(
+    arr: "np.ndarray", ds: Optional["Dataset"] = None, **kwargs
+) -> Generator[bytes, None, None]:
     """Yield RLE encoded frames from `arr`.
 
     Parameters
     ----------
     arr : numpy.ndarray
-        The array of data to be RLE encoded
-    kwargs : dict
-        A dictionary containing keyword arguments. Required keys are either:
+        The array of data to be RLE encoded, should be ordered as (frames,
+        rows, columns, planes), (rows, columns, planes), (frames, rows,
+        columns) or (rows, columns).
+    ds : pydicom.dataset.Dataset, optional
+        The dataset corresponding to `arr` with matching values for *Rows*,
+        *Columns*, *Samples per Pixel* and *Bits Allocated*. Required if
+        the array properties aren't specified using `kwargs`.
+    kwargs : dict, optional
+        A dictionary containing keyword arguments. Required if `ds` isn't used,
+        keys are:
 
-        * ``{'ds': pydicom.dataset.Dataset}``, which is the corresponding
-          dataset, or
-        * ``{'rows': int, 'columns': int, samples_per_px': int,
-          'bits_per_px': int, 'nr_frames': int}``.
+        * ``{'rows': int, 'columns': int}`` the number of rows and columns
+          contained in `arr`.
+        * ``{samples_per_px': int}`` the number of samples per pixel, either
+          1 for monochrome or 3 for RGB or similar data.
+        * ``{'bits_per_px': int}`` the number of bits needed to contain each
+          pixel, either 8, 16, 32 or 64.
+        * ``{'nr_frames': int}`` the number of frames in `arr`, required if
+          more than one frame is present.
 
     Yields
     ------
@@ -64,20 +86,27 @@ def encode_array(arr: "np.ndarray", **kwargs) -> Generator[bytes, None, None]:
 
     kwargs['byteorder'] = byteorder
 
-    if 'ds' in kwargs:
-        nr_frames = getattr(kwargs['ds'], "NumberOfFrames", 1)
-    else:
-        nr_frames = kwargs['nr_frames']
+    if ds:
+        kwargs['rows'] = ds.Rows
+        kwargs['columns'] = ds.Columns
+        kwargs['samples_per_px'] = ds.SamplesPerPixel
+        kwargs['bits_per_px'] = ds.BitsAllocated
+        kwargs['nr_frames'] = int(getattr(ds, "NumberOfFrames", 1))
 
-    if nr_frames > 1:
+    if kwargs['nr_frames'] > 1:
         for frame in arr:
             yield encode_pixel_data(frame.tobytes(), **kwargs)
     else:
         yield encode_pixel_data(arr.tobytes(), **kwargs)
 
 
-def encode_pixel_data(stream: bytes, **kwargs) -> bytes:
-    """Return `stream` encoded using the DICOM RLE (PackBits) algorithm.
+def encode_pixel_data(
+    src: bytes,
+    ds: Optional["Dataset"] = None,
+    byteorder: Optional[str] = None,
+    **kwargs
+) -> bytes:
+    """Return `src` encoded using the DICOM RLE (PackBits) algorithm.
 
     .. warning::
 
@@ -87,57 +116,70 @@ def encode_pixel_data(stream: bytes, **kwargs) -> bytes:
 
     Parameters
     ----------
-    stream : bytes
-        The image frame data to be RLE encoded. Only 1 frame can be encoded
-        at a time.
+    src : bytes
+        The data for a single image frame data to be RLE encoded.
+    ds : pydicom.dataset.Dataset, optional
+        The dataset corresponding to `src` with matching values for *Rows*,
+        *Columns*, *Samples per Pixel* and *Bits Allocated*. Required if
+        the frame properties aren't specified using `kwargs`.
+    byteorder : str, optional
+        Required if the samples per pixel is greater than 1 and the value is
+        not passed using `kwargs`. If `src` is in little-endian byte order
+        then ``'<'``, otherwise ``'>'`` for big-endian.
     kwargs : dict
         A dictionary containing keyword arguments. Required keys are:
 
-        * ``{'byteorder': str}``, required if the number of samples per
-          pixel is greater than 1. If `stream` is in little-endian byte order
-          then ``'<'``, otherwise ``'>'`` for big-endian.
-
-        And either:
-
-        * ``{'ds': pydicom.dataset.Dataset}``, which is the dataset
-          corresponding to `stream` with matching values for *Rows*, *Columns*,
-          *Samples per Pixel* and *Bits Allocated*, or
-        * ``{'rows': int, 'columns': int, samples_per_px': int,
-          'bits_per_px': int}``.
+        * ``{'rows': int, 'columns': int}`` the number of rows and columns
+          contained in `src`
+        * ``{samples_per_px': int}`` the number of samples per pixel, either
+          1 for monochrome or 3 for RGB or similar data.
+        * ``{'bits_per_px': int}`` the number of bits needed to contain each
+          pixel, either 8, 16, 32 or 64.
+        * ``{'byteorder': str}``, required if the samples per pixel is greater
+          than 1. If `src` is in little-endian byte order then ``'<'``,
+          otherwise ``'>'`` for big-endian.
 
     Returns
     -------
     bytes
         The RLE encoded frame.
     """
-    if 'ds' in kwargs:
-        ds = kwargs['ds']
+    if ds:
         r, c = ds.Rows, ds.Columns
         bpp = ds.BitsAllocated
         spp = ds.SamplesPerPixel
     else:
         r, c = kwargs['rows'], kwargs['columns']
-        bpp = kwargs['bits_per_pixel']
+        bpp = kwargs['bits_per_px']
         spp = kwargs['samples_per_px']
 
     # Validate input
-    if bpp not in [8, 16, 32, 64]:
-        raise NotImplementedError("'Bits Allocated' must be 8, 16, 32 or 64")
-
     if spp not in [1, 3]:
-        raise ValueError("'Samples per Pixel' must be 1 or 3")
+        src = "(0028,0002) 'Samples per Pixel'" if ds else "'samples_per_px'"
+        raise ValueError(src + " must be 1 or 3")
+
+    if bpp not in [8, 16, 32, 64]:
+        src = "(0028,0100) 'Bits Allocated'" if ds else "'bits_per_px'"
+        raise ValueError(src + " must be 8, 16, 32 or 64")
 
     if bpp / 8 * spp > 15:
         raise ValueError(
-            "Unable to encode the data as the DICOM Standard blah blah"
+            "Unable to encode the data as the RLE format used by the DICOM "
+            "Standard only allows a maximum of 15 segments"
         )
 
-    if len(stream) != (r * c * bpp / 8 * spp):
+    if bpp > 8 and byteorder not in ('<', '>'):
         raise ValueError(
-            "The length of the data doesn't not match"
+            "A valid 'byteorder' is required when the number of bits per "
+            "pixel is greater than 8"
         )
 
-    return encode_frame(stream, r, c, spp, bpp, kwargs['byteorder'])
+    if len(src) != (r * c * bpp / 8 * spp):
+        raise ValueError(
+            "The length of the data doesn't match the image parameters"
+        )
+
+    return encode_frame(src, r, c, spp, bpp, byteorder)
 
 
 def generate_frames(ds: "Dataset", reshape: bool = True) -> "np.ndarray":
@@ -217,8 +259,8 @@ def pixel_array(ds: "Dataset") -> "np.ndarray":
     ----------
     ds : pydicom.dataset.Dataset
         The :class:`Dataset` containing an :dcm:`Image Pixel
-        <part03/sect_C.7.6.3.html>` module and the *Pixel Data* to be
-        converted.
+        <part03/sect_C.7.6.3.html>` module and the *RLE Lossless* encoded
+        *Pixel Data* to be decoded.
 
     Returns
     -------
@@ -242,3 +284,25 @@ def pixel_array(ds: "Dataset") -> "np.ndarray":
         arr[offset:offset + frame_len] = frame
 
     return reshape_pixel_array(ds, arr)
+
+
+def pixel_data(arr: "np.ndarray", ds: "Dataset") -> bytes:
+    """Return `arr` as encapsulated and RLE encoded bytes.
+
+    Parameters
+    ----------
+    arr : numpy.ndarray
+        The :class:`~numpy.ndarray` to be encoded.
+    ds : pydicom.dataset.Dataset
+        The dataset corresponding to `arr` with matching values for *Rows*,
+        *Columns*, *Samples per Pixel* and *Bits Allocated*.
+
+    Returns
+    -------
+    bytes
+        The encapsulated and RLE encoded `arr`, ready to be used to set
+        the dataset's *Pixel Data* element.
+    """
+    from pydicom.encaps import encapsulate
+
+    return encapsulate([ii for ii in encode_array(arr, ds)])
