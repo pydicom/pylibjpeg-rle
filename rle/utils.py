@@ -1,7 +1,7 @@
 """Utility functions."""
 
 import sys
-from typing import Generator, Optional
+from typing import Generator, Optional, Dict, Any
 
 import numpy as np
 
@@ -20,8 +20,8 @@ def decode_pixel_data(src: bytes, ds: "Dataset", **kwargs) -> "np.ndarray":
     ds : pydicom.dataset.Dataset
         A :class:`~pydicom.dataset.Dataset` containing the group ``0x0028``
         elements corresponding to the image frame.
-    kwargs : dict, optional
-        A dictionary containing options for the decoder. Current options are:
+    **kwargs
+        Current decoding options are:
 
         * ``{'byteorder': str}`` specify the byte ordering for the decoded data
         when more than 8 bits per pixel are used, should be '<' for little
@@ -64,17 +64,16 @@ def encode_array(
         The dataset corresponding to `arr` with matching values for *Rows*,
         *Columns*, *Samples per Pixel* and *Bits Allocated*. Required if
         the array properties aren't specified using `kwargs`.
-    kwargs : dict, optional
-        A dictionary containing keyword arguments. Required if `ds` isn't used,
-        keys are:
+    **kwargs
+        Required keyword parameters if `ds` isn't used are:
 
-        * ``{'rows': int, 'columns': int}`` the number of rows and columns
-          contained in `arr`.
-        * ``{samples_per_px': int}`` the number of samples per pixel, either
+        * ``'rows': int`` the number of rows contained in `src`
+        * ``'columns': int`` the number of columns contained in `src`
+        * ``samples_per_px': int`` the number of samples per pixel, either
           1 for monochrome or 3 for RGB or similar data.
-        * ``{'bits_per_px': int}`` the number of bits needed to contain each
+        * ``'bits_per_px': int`` the number of bits needed to contain each
           pixel, either 8, 16, 32 or 64.
-        * ``{'nr_frames': int}`` the number of frames in `arr`, required if
+        * ``'nr_frames': int`` the number of frames in `arr`, required if
           more than one frame is present.
 
     Yields
@@ -106,7 +105,7 @@ def encode_pixel_data(
     src: bytes,
     ds: Optional["Dataset"] = None,
     byteorder: Optional[str] = None,
-    **kwargs
+    **kwargs,
 ) -> bytes:
     """Return `src` encoded using the DICOM RLE (PackBits) algorithm.
 
@@ -127,21 +126,18 @@ def encode_pixel_data(
         *Columns*, *Samples per Pixel* and *Bits Allocated*. Required if
         the frame properties aren't specified using `kwargs`.
     byteorder : str, optional
-        Required if the samples per pixel is greater than 1 and the value is
-        not passed using `kwargs`. If `src` is in little-endian byte order
-        then ``'<'``, otherwise ``'>'`` for big-endian.
-    kwargs : dict
-        A dictionary containing keyword arguments. Required keys are:
+        Required if the samples per pixel is greater than 1. If `src` is in
+        little-endian byte order then ``'<'``, otherwise ``'>'`` for
+        big-endian.
+    **kwargs
+        If `ds` is not used then the following are required:
 
-        * ``{'rows': int, 'columns': int}`` the number of rows and columns
-          contained in `src`
-        * ``{samples_per_px': int}`` the number of samples per pixel, either
+        * ``'rows': int`` the number of rows contained in `src`
+        * ``'columns': int`` the number of columns contained in `src`
+        * ``samples_per_px': int`` the number of samples per pixel, either
           1 for monochrome or 3 for RGB or similar data.
-        * ``{'bits_per_px': int}`` the number of bits needed to contain each
+        * ``'bits_per_px': int`` the number of bits needed to contain each
           pixel, either 8, 16, 32 or 64.
-        * ``{'byteorder': str}``, required if the samples per pixel is greater
-          than 1. If `src` is in little-endian byte order then ``'<'``,
-          otherwise ``'>'`` for big-endian.
 
     Returns
     -------
@@ -172,7 +168,8 @@ def encode_pixel_data(
             "Standard only allows a maximum of 15 segments"
         )
 
-    if bpp > 8 and byteorder not in ('<', '>'):
+    byteorder = '<' if bpp == 8 else byteorder
+    if byteorder not in ('<', '>'):
         raise ValueError(
             "A valid 'byteorder' is required when the number of bits per "
             "pixel is greater than 8"
