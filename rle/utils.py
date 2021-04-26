@@ -1,7 +1,7 @@
 """Utility functions."""
 
 import sys
-from typing import Generator, Optional, Dict, Any
+from typing import Generator, Optional
 
 import numpy as np
 
@@ -105,7 +105,7 @@ def encode_pixel_data(
     src: bytes,
     ds: Optional["Dataset"] = None,
     byteorder: Optional[str] = None,
-    **kwargs,
+    **kwargs
 ) -> bytes:
     """Return `src` encoded using the DICOM RLE (PackBits) algorithm.
 
