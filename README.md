@@ -102,11 +102,11 @@ Time per 1000 decodes, pydicom's default RLE handler vs. pylibjpeg-rle
 
 Time per 1000 encodes, pydicom's default RLE handler vs. pylibjpeg-rle
 
-| Dataset            | Pixels  | Bytes   | NumPy  | pylibjpeg-rle |
-| ---                | ---     | ---     | ---    | ---           |
-| OBXXXX1A.dcm       | 480,000 | 480,000 | 30.7 s |       1.36 s  |
-| SC_rgb.dcm         |  10,000 |  30,000 | 1.80 s |       0.09 s  |
-| MR_small.dcm       |   4,096 |   8,192 | 2.29 s |       0.04 s  |
-| SC_rgb_16bit.dcm   |  10,000 |  60,000 | 3.57 s |       0.17 s  |
-| rtdose_1frame.dcm  |     100 |     400 | 0.19 s |       0.003 s |
-| SC_rgb_32bit.dcm   |  10,000 | 120,000 | 7.20 s |       0.33 s  |
+| Dataset            | Pixels  | Bytes   | pydicom | pylibjpeg-rle |
+| ---                | ---     | ---     | ---     | ---           |
+| OBXXXX1A.dcm       | 480,000 | 480,000 | 30.7 s  |       1.36 s  |
+| SC_rgb.dcm         |  10,000 |  30,000 | 1.80 s  |       0.09 s  |
+| MR_small.dcm       |   4,096 |   8,192 | 2.29 s  |       0.04 s  |
+| SC_rgb_16bit.dcm   |  10,000 |  60,000 | 3.57 s  |       0.17 s  |
+| rtdose_1frame.dcm  |     100 |     400 | 0.19 s  |       0.003 s |
+| SC_rgb_32bit.dcm   |  10,000 | 120,000 | 7.20 s  |       0.33 s  |
