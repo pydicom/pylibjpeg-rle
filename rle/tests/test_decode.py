@@ -27,10 +27,6 @@ from rle.utils import generate_frames, pixel_array
 
 INDEX = get_indexed_datasets('1.2.840.10008.1.2.5')
 
-REF = [
-    ('MR_small_RLE.dcm', 2, (64, 1948)),
-]
-
 
 HEADER_DATA = [
     # (Number of segments, offsets)
@@ -78,46 +74,45 @@ class TestDecodeFrame:
     def test_bits_allocated_zero_raises(self):
         """Test exception raised for BitsAllocated 0."""
         msg = (
-            r"The \(0028,0010\) 'Bits Allocated' value must be greater than 0"
+            r"The \(0028,0100\) 'Bits Allocated' value must be 8, 16, 32 or 64"
         )
         with pytest.raises(ValueError, match=msg):
-            decode_frame(b'\x00\x00\x00\x00', 1, 0)
+            decode_frame(b'\x00\x00\x00\x00', 1, 0, '<')
 
     def test_bits_allocated_not_octal_raises(self):
         """Test exception raised for BitsAllocated not a multiple of 8."""
         msg = (
-            r"The \(0028,0010\) 'Bits Allocated' value must be a multiple of 8"
+            r"The \(0028,0100\) 'Bits Allocated' value must be 8, 16, 32 or 64"
         )
         with pytest.raises(ValueError, match=msg):
-            decode_frame(b'\x00\x00\x00\x00', 1, 12)
+            decode_frame(b'\x00\x00\x00\x00', 1, 12, '<')
 
     def test_bits_allocated_large_raises(self):
         """Test exception raised for BitsAllocated greater than 64."""
         msg = (
-            r"A \(0028,0010\) 'Bits Allocated' value greater than "
-            r"64 is not supported"
+            r"The \(0028,0100\) 'Bits Allocated' value must be 8, 16, 32 or 64"
         )
         with pytest.raises(ValueError, match=msg):
-            decode_frame(b'\x00\x00\x00\x00', 1, 72)
+            decode_frame(b'\x00\x00\x00\x00', 1, 72, '<')
 
     def test_insufficient_data_for_header_raises(self):
         """Test exception raised if insufficient data."""
         msg = r"Frame is not long enough to contain RLE encoded data"
         with pytest.raises(ValueError, match=msg):
-            decode_frame(b'\x00\x00\x00\x00', 1, 8)
+            decode_frame(b'\x00\x00\x00\x00', 1, 8, '<')
 
     def test_no_data_raises(self):
         """Test exception raised if no data."""
         msg = r"Frame is not long enough to contain RLE encoded data"
         with pytest.raises(ValueError, match=msg):
-            decode_frame(b'', 1, 8)
+            decode_frame(b'', 1, 8, '<')
 
     def test_invalid_first_offset_raises(self):
         """Test exception if invalid first offset."""
         msg = r"Invalid segment offset found in the RLE header"
         d = self.as_bytes([0])
         with pytest.raises(ValueError, match=msg):
-            decode_frame(d, 1, 8)
+            decode_frame(d, 1, 8, '<')
 
     def test_insufficient_data_for_offsets_raises(self):
         """Test exception if invalid first offset."""
@@ -125,21 +120,21 @@ class TestDecodeFrame:
         # Offset 64 with length 64
         d = self.as_bytes([64])
         with pytest.raises(ValueError, match=msg):
-            decode_frame(d, 1, 8)
+            decode_frame(d, 1, 8, '<')
 
     def test_non_increasing_offsets_raises(self):
         """Test exception if offsets not in increasing order."""
         msg = r"Invalid segment offset found in the RLE header"
         d = self.as_bytes([64, 70, 68])
         with pytest.raises(ValueError, match=msg):
-            decode_frame(d, 1, 8)
+            decode_frame(d, 1, 8, '<')
 
     def test_invalid_samples_px_raises(self):
         """Test exception if samples per px not 1 or 3."""
-        msg = r"The \(0028,0002\) 'Samples Per Pixel' must be 1 or 3"
+        msg = r"The \(0028,0002\) 'Samples per Pixel' must be 1 or 3"
         d = self.as_bytes([64, 70])
         with pytest.raises(ValueError, match=msg):
-            decode_frame(d + b'\x00' * 8, 1, 8)
+            decode_frame(d + b'\x00' * 8, 1, 8, '<')
 
     def test_insufficient_frame_literal_raises(self):
         """Test exception if frame not large enough to hold segment on lit."""
@@ -149,7 +144,7 @@ class TestDecodeFrame:
         )
         d = self.as_bytes([64])
         with pytest.raises(ValueError, match=msg):
-            decode_frame(d + b'\x00' * 8, 1, 8)
+            decode_frame(d + b'\x00' * 8, 1, 8, '<')
 
     def test_insufficient_frame_copy_raises(self):
         """Test exception if frame not large enough to hold segment on copy."""
@@ -159,7 +154,7 @@ class TestDecodeFrame:
         )
         d = self.as_bytes([64])
         with pytest.raises(ValueError, match=msg):
-            decode_frame(d + b'\xff\x00\x00', 1, 8)
+            decode_frame(d + b'\xff\x00\x00', 1, 8, '<')
 
     def test_insufficient_segment_copy_raises(self):
         """Test exception if insufficient segment data on copy."""
@@ -169,7 +164,7 @@ class TestDecodeFrame:
         )
         d = self.as_bytes([64])
         with pytest.raises(ValueError, match=msg):
-            decode_frame(d + b'\xff', 8, 8)
+            decode_frame(d + b'\xff', 8, 8, '<')
 
     def test_insufficient_segment_literal_raises(self):
         """Test exception if insufficient segment data on literal."""
@@ -179,21 +174,39 @@ class TestDecodeFrame:
         )
         d = self.as_bytes([64])
         with pytest.raises(ValueError, match=msg):
-            decode_frame(d + b'\x0a' * 8, 12, 8)
+            decode_frame(d + b'\x0a' * 8, 12, 8, '<')
+
+    def test_invalid_byteorder_raises(self):
+        """Test exception if invalid byteorder."""
+        header = (
+            b'\x01\x00\x00\x00'
+            b'\x40\x00\x00\x00'
+        )
+        header += (64 - len(header)) * b'\x00'
+        # 2 x 3 data
+        # 0, 64, 128, 160, 192, 255
+        data = b'\x05\x00\x40\x80\xA0\xC0\xFF'
+
+        # Ok with u8
+        decode_frame(header + data, 2 * 3, 8, '=')
+
+        msg = r"'byteorder' must be '>' or '<'"
+        with pytest.raises(ValueError, match=msg):
+            decode_frame(header + data, 1 * 3, 16, '=')
 
     def test_decoded_segment_length_short(self):
         """Test exception if decoded segment length invalid."""
         msg = r"The decoded segment length does not match the expected length"
         d = self.as_bytes([64])
         with pytest.raises(ValueError, match=msg):
-            decode_frame(d + b'\x00' * 8, 12, 8)
+            decode_frame(d + b'\x00' * 8, 12, 8, '<')
 
     def test_decoded_segment_length_long(self):
         """Test exception if decoded segment length invalid."""
         msg = r"The decoded segment length does not match the expected length"
         d = self.as_bytes([64, 72])
         with pytest.raises(ValueError, match=msg):
-            decode_frame(d + b'\x00' * 20, 8, 16)
+            decode_frame(d + b'\x00' * 20, 8, 16, '<')
 
     def test_u8_1s(self):
         """Test decoding 8-bit, 1 sample/pixel."""
@@ -205,8 +218,14 @@ class TestDecodeFrame:
         # 2 x 3 data
         # 0, 64, 128, 160, 192, 255
         data = b'\x05\x00\x40\x80\xA0\xC0\xFF'
-        decoded = decode_frame(header + data, 2 * 3, 8)
-        arr = np.frombuffer(decoded, np.dtype('>u1'))
+        # Big endian
+        decoded = decode_frame(header + data, 2 * 3, 8, '>')
+        arr = np.frombuffer(decoded, np.dtype('uint8'))
+        assert [0, 64, 128, 160, 192, 255] == arr.tolist()
+
+        # Little-endian
+        decoded = decode_frame(header + data, 2 * 3, 8, '<')
+        arr = np.frombuffer(decoded, np.dtype('uint8'))
         assert [0, 64, 128, 160, 192, 255] == arr.tolist()
 
     def test_u8_3s(self):
@@ -225,8 +244,8 @@ class TestDecodeFrame:
             b'\x05\xFF\xC0\x80\x40\x00\xFF'  # B
             b'\x05\x01\x40\x80\xA0\xC0\xFE'  # G
         )
-        decoded = decode_frame(header + data, 2 * 3, 8)
-        arr = np.frombuffer(decoded, np.dtype('>u1'))
+        decoded = decode_frame(header + data, 2 * 3, 8, '<')
+        arr = np.frombuffer(decoded, np.dtype('uint8'))
         # Ordered all R, all G, all B
         assert [0, 64, 128, 160, 192, 255] == arr[:6].tolist()
         assert [255, 192, 128, 64, 0, 255] == arr[6:12].tolist()
@@ -246,8 +265,14 @@ class TestDecodeFrame:
             b'\x05\x00\x00\x01\x00\xFF\xFF'  # MSB
             b'\x05\x00\x01\x00\xFF\x00\xFF'  # LSB
         )
-        decoded = decode_frame(header + data, 2 * 3, 16)
+        # Big-endian output
+        decoded = decode_frame(header + data, 2 * 3, 16, '>')
         arr = np.frombuffer(decoded, np.dtype('>u2'))
+        assert [0, 1, 256, 255, 65280, 65535] == arr.tolist()
+
+        # Little-endian output
+        decoded = decode_frame(header + data, 2 * 3, 16, '<')
+        arr = np.frombuffer(decoded, np.dtype('<u2'))
         assert [0, 1, 256, 255, 65280, 65535] == arr.tolist()
 
     def test_u16_3s(self):
@@ -272,8 +297,16 @@ class TestDecodeFrame:
             b'\x05\x00\x00\x01\x00\xFF\xFF'  # MSB
             b'\x05\x01\x01\x00\xFF\x00\xFE'  # LSB
         )
-        decoded = decode_frame(header + data, 2 * 3, 16)
+        # Big-endian output
+        decoded = decode_frame(header + data, 2 * 3, 16, '>')
         arr = np.frombuffer(decoded, np.dtype('>u2'))
+        assert [0, 1, 256, 255, 65280, 65535] == arr[:6].tolist()
+        assert [65535, 1, 256, 255, 65280, 0] == arr[6:12].tolist()
+        assert [1, 1, 256, 255, 65280, 65534] == arr[12:].tolist()
+
+        # Little-endian output
+        decoded = decode_frame(header + data, 2 * 3, 16, '<')
+        arr = np.frombuffer(decoded, np.dtype('<u2'))
         assert [0, 1, 256, 255, 65280, 65535] == arr[:6].tolist()
         assert [65535, 1, 256, 255, 65280, 0] == arr[6:12].tolist()
         assert [1, 1, 256, 255, 65280, 65534] == arr[12:].tolist()
@@ -296,8 +329,14 @@ class TestDecodeFrame:
             b'\x05\x00\x00\x00\x01\x00\xFF'
             b'\x05\x00\x00\x00\x00\x01\xFF'  # LSB
         )
-        decoded = decode_frame(header + data, 2 * 3, 32)
+        # Big-endian output
+        decoded = decode_frame(header + data, 2 * 3, 32, '>')
         arr = np.frombuffer(decoded, np.dtype('>u4'))
+        assert [0, 16777216, 65536, 256, 1, 4294967295] == arr.tolist()
+
+        # Little-endian output
+        decoded = decode_frame(header + data, 2 * 3, 32, '<')
+        arr = np.frombuffer(decoded, np.dtype('<u4'))
         assert [0, 16777216, 65536, 256, 1, 4294967295] == arr.tolist()
 
     def test_u32_3s(self):
@@ -334,8 +373,16 @@ class TestDecodeFrame:
             b'\x05\x00\x00\x00\x01\x00\xFF'
             b'\x05\x01\x00\x00\x00\x01\xFE'  # LSB
         )
-        decoded = decode_frame(header + data, 2 * 3, 32)
+        # Big-endian output
+        decoded = decode_frame(header + data, 2 * 3, 32, '>')
         arr = np.frombuffer(decoded, np.dtype('>u4'))
+        assert [0, 16777216, 65536, 256, 1, 4294967295] == arr[:6].tolist()
+        assert [4294967295, 16777216, 65536, 256, 1, 0] == arr[6:12].tolist()
+        assert [1, 16777216, 65536, 256, 1, 4294967294] == arr[12:].tolist()
+
+        # Little-endian output
+        decoded = decode_frame(header + data, 2 * 3, 32, '<')
+        arr = np.frombuffer(decoded, np.dtype('<u4'))
         assert [0, 16777216, 65536, 256, 1, 4294967295] == arr[:6].tolist()
         assert [4294967295, 16777216, 65536, 256, 1, 0] == arr[6:12].tolist()
         assert [1, 16777216, 65536, 256, 1, 4294967294] == arr[12:].tolist()
@@ -465,7 +512,7 @@ class TestDecodeFrame_Datasets:
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
         assert (64, 64) == arr.shape
-        assert '>i2' == arr.dtype
+        assert '<i2' == arr.dtype
 
         assert (422, 319, 361) == tuple(arr[0, 31:34])
         assert (366, 363, 322) == tuple(arr[31, :3])
@@ -486,7 +533,7 @@ class TestDecodeFrame_Datasets:
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
         assert (10, 64, 64) == arr.shape
-        assert '>u2' == arr.dtype
+        assert '<u2' == arr.dtype
 
         # Frame 1
         assert (206, 197, 159) == tuple(arr[0, 0, 31:34])
@@ -518,7 +565,7 @@ class TestDecodeFrame_Datasets:
         assert arr.flags.writeable
         assert np.array_equal(ds.pixel_array, ref)
         assert (100, 100, 3) == arr.shape
-        assert '>u2' == arr.dtype
+        assert '<u2' == arr.dtype
 
         assert (65535, 0, 0) == tuple(arr[5, 50, :])
         assert (65535, 32896, 32896) == tuple(arr[15, 50, :])
@@ -546,7 +593,7 @@ class TestDecodeFrame_Datasets:
         assert arr.flags.writeable
         assert np.array_equal(ds.pixel_array, ref)
         assert (2, 100, 100, 3) == arr.shape
-        assert '>u2' == arr.dtype
+        assert '<u2' == arr.dtype
 
         # Frame 1
         frame = arr[0]
@@ -576,7 +623,7 @@ class TestDecodeFrame_Datasets:
         ref = ds.pixel_array
         arr = pixel_array(ds)
         assert (10, 10) == arr.shape
-        assert '>u4' == arr.dtype
+        assert '<u4' == arr.dtype
 
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
@@ -599,7 +646,7 @@ class TestDecodeFrame_Datasets:
         assert arr.flags.writeable
         assert np.array_equal(arr, ref)
         assert (15, 10, 10) == arr.shape
-        assert '>u4' == arr.dtype
+        assert '<u4' == arr.dtype
 
         # Frame 1
         assert (1249000, 1249000, 1250000) == tuple(arr[0, 0, :3])
@@ -629,7 +676,7 @@ class TestDecodeFrame_Datasets:
         arr = pixel_array(ds)
         assert arr.flags.writeable
         assert (100, 100, 3) == arr.shape
-        assert '>u4' == arr.dtype
+        assert '<u4' == arr.dtype
 
         assert np.array_equal(ds.pixel_array, ref)
         assert (4294967295, 0, 0) == tuple(arr[5, 50, :])
@@ -656,7 +703,7 @@ class TestDecodeFrame_Datasets:
         arr = pixel_array(ds)
         assert arr.flags.writeable
         assert (2, 100, 100, 3) == arr.shape
-        assert '>u4' == arr.dtype
+        assert '<u4' == arr.dtype
 
         assert np.array_equal(ds.pixel_array, ref)
 

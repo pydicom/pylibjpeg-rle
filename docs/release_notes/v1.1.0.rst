@@ -1,0 +1,22 @@
+.. _v1.1.0:
+
+1.1.0
+=====
+
+Enhancements
+............
+
+* Added support for *RLE Lossless* encoding of *Pixel Data*
+* Added :func:`~rle.utils.encode_array` generator for standalone encoding
+* Added :func:`~rle.utils.pixel_data` function for encoding and encapsulating
+  a numpy ndarray
+* Added :func:`~rle.utils.encode_pixel_data` entry point for encoding
+* Added the ability to return decoded data in either little or big endian
+  ordering
+
+Changes
+.......
+
+* :func:`~rle.utils.pixel_array`, :func:`~rle.utils.generate_frames` and
+  :func:`~rle.utils.decode_pixel_data` now return little-endian ordered
+  ndarrays by default

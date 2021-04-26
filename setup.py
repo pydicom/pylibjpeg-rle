@@ -20,8 +20,8 @@ with open('README.md', 'r') as fp:
 setup(
     name = 'pylibjpeg-rle',
     description = (
-        "Python bindings for a fast RLE decoder, with a focus on use as a "
-        "plugin for pylibjpeg"
+        "Python bindings for a fast RLE decoder/encoder, with a focus on "
+        "use as a plugin for pylibjpeg"
     ),
     long_description = long_description,
     long_description_content_type = 'text/markdown',
@@ -70,6 +70,9 @@ setup(
     entry_points={
         'pylibjpeg.pixel_data_decoders': [
             "1.2.840.10008.1.2.5 = rle:decode_pixel_data",
+        ],
+        'pylibjpeg.pixel_data_encoders': [
+            "1.2.840.10008.1.2.5 = rle:encode_pixel_data",
         ],
     },
 )
