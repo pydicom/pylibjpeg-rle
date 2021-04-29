@@ -59,9 +59,9 @@ class TestEncodeArray:
         kwargs = {}
         kwargs['rows'] = ds.Rows
         kwargs['columns'] = ds.Columns
-        kwargs['samples_per_px'] = ds.SamplesPerPixel
-        kwargs['bits_per_px'] = ds.BitsAllocated
-        kwargs['nr_frames'] = int(getattr(ds, "NumberOfFrames", 1))
+        kwargs['samples_per_pixel'] = ds.SamplesPerPixel
+        kwargs['bits_allocated'] = ds.BitsAllocated
+        kwargs['number_of_frames'] = int(getattr(ds, "NumberOfFrames", 1))
 
         ref = ds.pixel_array
         gen = encode_array(ref, **kwargs)
@@ -105,9 +105,9 @@ class TestEncodeArray:
         kwargs = {}
         kwargs['rows'] = ds.Rows
         kwargs['columns'] = ds.Columns
-        kwargs['samples_per_px'] = ds.SamplesPerPixel
-        kwargs['bits_per_px'] = ds.BitsAllocated
-        kwargs['nr_frames'] = int(getattr(ds, "NumberOfFrames", 1))
+        kwargs['samples_per_pixel'] = ds.SamplesPerPixel
+        kwargs['bits_allocated'] = ds.BitsAllocated
+        kwargs['number_of_frames'] = int(getattr(ds, "NumberOfFrames", 1))
 
         ref = ds.pixel_array
         gen = encode_array(ref, **kwargs)
@@ -137,8 +137,8 @@ class TestEncodePixelData:
         kwargs = {
             'rows': 0,
             'columns': 0,
-            'samples_per_px': 1,
-            'bits_per_px': 16,
+            'samples_per_pixel': 1,
+            'bits_allocated': 16,
             'byteorder': '=',
         }
 
@@ -158,12 +158,12 @@ class TestEncodePixelData:
         kwargs = {
             'rows': 0,
             'columns': 0,
-            'samples_per_px': 0,
-            'bits_per_px': 0,
+            'samples_per_pixel': 0,
+            'bits_allocated': 0,
             'byteorder': '<',
         }
 
-        msg = r"'samples_per_px' must be 1 or 3"
+        msg = r"'samples_per_pixel' must be 1 or 3"
         with pytest.raises(ValueError, match=msg):
             encode_pixel_data(b'', **kwargs)
 
@@ -172,12 +172,12 @@ class TestEncodePixelData:
         kwargs = {
             'rows': 0,
             'columns': 0,
-            'samples_per_px': 1,
-            'bits_per_px': 2,
+            'samples_per_pixel': 1,
+            'bits_allocated': 2,
             'byteorder': '<',
         }
 
-        msg = r"'bits_per_px' must be 8, 16, 32 or 64"
+        msg = r"'bits_allocated' must be 8, 16, 32 or 64"
         with pytest.raises(ValueError, match=msg):
             encode_pixel_data(b'', **kwargs)
 
@@ -186,8 +186,8 @@ class TestEncodePixelData:
         kwargs = {
             'rows': 1,
             'columns': 1,
-            'samples_per_px': 1,
-            'bits_per_px': 8,
+            'samples_per_pixel': 1,
+            'bits_allocated': 8,
             'byteorder': '<',
         }
 
@@ -200,8 +200,8 @@ class TestEncodePixelData:
         kwargs = {
             'rows': 1,
             'columns': 1,
-            'samples_per_px': 3,
-            'bits_per_px': 64,
+            'samples_per_pixel': 3,
+            'bits_allocated': 64,
             'byteorder': '<',
         }
 

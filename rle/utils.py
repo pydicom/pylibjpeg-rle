@@ -90,11 +90,11 @@ def encode_array(
     if ds:
         kwargs['rows'] = ds.Rows
         kwargs['columns'] = ds.Columns
-        kwargs['samples_per_px'] = ds.SamplesPerPixel
-        kwargs['bits_per_px'] = ds.BitsAllocated
-        kwargs['nr_frames'] = int(getattr(ds, "NumberOfFrames", 1))
+        kwargs['samples_per_pixel'] = ds.SamplesPerPixel
+        kwargs['bits_allocated'] = ds.BitsAllocated
+        kwargs['number_of_frames'] = int(getattr(ds, "NumberOfFrames", 1) or 1)
 
-    if kwargs['nr_frames'] > 1:
+    if kwargs['number_of_frames'] > 1:
         for frame in arr:
             yield encode_pixel_data(frame.tobytes(), **kwargs)
     else:
@@ -134,9 +134,9 @@ def encode_pixel_data(
 
         * ``'rows': int`` the number of rows contained in `src`
         * ``'columns': int`` the number of columns contained in `src`
-        * ``samples_per_px': int`` the number of samples per pixel, either
+        * ``samples_per_pixel': int`` the number of samples per pixel, either
           1 for monochrome or 3 for RGB or similar data.
-        * ``'bits_per_px': int`` the number of bits needed to contain each
+        * ``'bits_allocated': int`` the number of bits needed to contain each
           pixel, either 8, 16, 32 or 64.
 
     Returns
@@ -145,21 +145,23 @@ def encode_pixel_data(
         The RLE encoded frame.
     """
     if ds:
-        r, c = ds.Rows, ds.Columns
+        r = ds.Rows
+        c = ds.Columns
         bpp = ds.BitsAllocated
         spp = ds.SamplesPerPixel
     else:
-        r, c = kwargs['rows'], kwargs['columns']
-        bpp = kwargs['bits_per_px']
-        spp = kwargs['samples_per_px']
+        r = kwargs['rows']
+        c = kwargs['columns']
+        bpp = kwargs['bits_allocated']
+        spp = kwargs['samples_per_pixel']
 
     # Validate input
     if spp not in [1, 3]:
-        src = "(0028,0002) 'Samples per Pixel'" if ds else "'samples_per_px'"
+        src = "(0028,0002) 'Samples per Pixel'" if ds else "'samples_per_pixel'"
         raise ValueError(src + " must be 1 or 3")
 
     if bpp not in [8, 16, 32, 64]:
-        src = "(0028,0100) 'Bits Allocated'" if ds else "'bits_per_px'"
+        src = "(0028,0100) 'Bits Allocated'" if ds else "'bits_allocated'"
         raise ValueError(src + " must be 8, 16, 32 or 64")
 
     if bpp / 8 * spp > 15:
@@ -233,8 +235,9 @@ def generate_frames(ds: "Dataset", reshape: bool = True) -> "np.ndarray":
             "elements are missing from the dataset: " + ", ".join(missing)
         )
 
-    nr_frames = getattr(ds, "NumberOfFrames", 1)
-    r, c = ds.Rows, ds.Columns
+    nr_frames = int(getattr(ds, "NumberOfFrames", 1) or 1)
+    r = ds.Rows
+    c = ds.Columns
     bpp = ds.BitsAllocated
 
     dtype = pixel_dtype(ds)
