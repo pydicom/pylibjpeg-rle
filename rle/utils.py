@@ -20,8 +20,8 @@ def decode_pixel_data(src: bytes, ds: "Dataset", **kwargs) -> "np.ndarray":
     ds : pydicom.dataset.Dataset
         A :class:`~pydicom.dataset.Dataset` containing the group ``0x0028``
         elements corresponding to the image frame.
-    kwargs : dict, optional
-        A dictionary containing options for the decoder. Current options are:
+    **kwargs
+        Current decoding options are:
 
         * ``{'byteorder': str}`` specify the byte ordering for the decoded data
         when more than 8 bits per pixel are used, should be '<' for little
@@ -64,17 +64,16 @@ def encode_array(
         The dataset corresponding to `arr` with matching values for *Rows*,
         *Columns*, *Samples per Pixel* and *Bits Allocated*. Required if
         the array properties aren't specified using `kwargs`.
-    kwargs : dict, optional
-        A dictionary containing keyword arguments. Required if `ds` isn't used,
-        keys are:
+    **kwargs
+        Required keyword parameters if `ds` isn't used are:
 
-        * ``{'rows': int, 'columns': int}`` the number of rows and columns
-          contained in `arr`.
-        * ``{samples_per_px': int}`` the number of samples per pixel, either
+        * ``'rows': int`` the number of rows contained in `src`
+        * ``'columns': int`` the number of columns contained in `src`
+        * ``samples_per_px': int`` the number of samples per pixel, either
           1 for monochrome or 3 for RGB or similar data.
-        * ``{'bits_per_px': int}`` the number of bits needed to contain each
+        * ``'bits_per_px': int`` the number of bits needed to contain each
           pixel, either 8, 16, 32 or 64.
-        * ``{'nr_frames': int}`` the number of frames in `arr`, required if
+        * ``'nr_frames': int`` the number of frames in `arr`, required if
           more than one frame is present.
 
     Yields
@@ -91,11 +90,11 @@ def encode_array(
     if ds:
         kwargs['rows'] = ds.Rows
         kwargs['columns'] = ds.Columns
-        kwargs['samples_per_px'] = ds.SamplesPerPixel
-        kwargs['bits_per_px'] = ds.BitsAllocated
-        kwargs['nr_frames'] = int(getattr(ds, "NumberOfFrames", 1))
+        kwargs['samples_per_pixel'] = ds.SamplesPerPixel
+        kwargs['bits_allocated'] = ds.BitsAllocated
+        kwargs['number_of_frames'] = int(getattr(ds, "NumberOfFrames", 1) or 1)
 
-    if kwargs['nr_frames'] > 1:
+    if kwargs['number_of_frames'] > 1:
         for frame in arr:
             yield encode_pixel_data(frame.tobytes(), **kwargs)
     else:
@@ -127,21 +126,18 @@ def encode_pixel_data(
         *Columns*, *Samples per Pixel* and *Bits Allocated*. Required if
         the frame properties aren't specified using `kwargs`.
     byteorder : str, optional
-        Required if the samples per pixel is greater than 1 and the value is
-        not passed using `kwargs`. If `src` is in little-endian byte order
-        then ``'<'``, otherwise ``'>'`` for big-endian.
-    kwargs : dict
-        A dictionary containing keyword arguments. Required keys are:
+        Required if the samples per pixel is greater than 1. If `src` is in
+        little-endian byte order then ``'<'``, otherwise ``'>'`` for
+        big-endian.
+    **kwargs
+        If `ds` is not used then the following are required:
 
-        * ``{'rows': int, 'columns': int}`` the number of rows and columns
-          contained in `src`
-        * ``{samples_per_px': int}`` the number of samples per pixel, either
+        * ``'rows': int`` the number of rows contained in `src`
+        * ``'columns': int`` the number of columns contained in `src`
+        * ``samples_per_pixel': int`` the number of samples per pixel, either
           1 for monochrome or 3 for RGB or similar data.
-        * ``{'bits_per_px': int}`` the number of bits needed to contain each
+        * ``'bits_allocated': int`` the number of bits needed to contain each
           pixel, either 8, 16, 32 or 64.
-        * ``{'byteorder': str}``, required if the samples per pixel is greater
-          than 1. If `src` is in little-endian byte order then ``'<'``,
-          otherwise ``'>'`` for big-endian.
 
     Returns
     -------
@@ -149,21 +145,23 @@ def encode_pixel_data(
         The RLE encoded frame.
     """
     if ds:
-        r, c = ds.Rows, ds.Columns
+        r = ds.Rows
+        c = ds.Columns
         bpp = ds.BitsAllocated
         spp = ds.SamplesPerPixel
     else:
-        r, c = kwargs['rows'], kwargs['columns']
-        bpp = kwargs['bits_per_px']
-        spp = kwargs['samples_per_px']
+        r = kwargs['rows']
+        c = kwargs['columns']
+        bpp = kwargs['bits_allocated']
+        spp = kwargs['samples_per_pixel']
 
     # Validate input
     if spp not in [1, 3]:
-        src = "(0028,0002) 'Samples per Pixel'" if ds else "'samples_per_px'"
+        src = "(0028,0002) 'Samples per Pixel'" if ds else "'samples_per_pixel'"
         raise ValueError(src + " must be 1 or 3")
 
     if bpp not in [8, 16, 32, 64]:
-        src = "(0028,0100) 'Bits Allocated'" if ds else "'bits_per_px'"
+        src = "(0028,0100) 'Bits Allocated'" if ds else "'bits_allocated'"
         raise ValueError(src + " must be 8, 16, 32 or 64")
 
     if bpp / 8 * spp > 15:
@@ -172,7 +170,8 @@ def encode_pixel_data(
             "Standard only allows a maximum of 15 segments"
         )
 
-    if bpp > 8 and byteorder not in ('<', '>'):
+    byteorder = '<' if bpp == 8 else byteorder
+    if byteorder not in ('<', '>'):
         raise ValueError(
             "A valid 'byteorder' is required when the number of bits per "
             "pixel is greater than 8"
@@ -236,8 +235,9 @@ def generate_frames(ds: "Dataset", reshape: bool = True) -> "np.ndarray":
             "elements are missing from the dataset: " + ", ".join(missing)
         )
 
-    nr_frames = getattr(ds, "NumberOfFrames", 1)
-    r, c = ds.Rows, ds.Columns
+    nr_frames = int(getattr(ds, "NumberOfFrames", 1) or 1)
+    r = ds.Rows
+    c = ds.Columns
     bpp = ds.BitsAllocated
 
     dtype = pixel_dtype(ds)
