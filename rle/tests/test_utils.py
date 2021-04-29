@@ -153,6 +153,18 @@ class TestEncodePixelData:
         with pytest.raises(ValueError, match=msg):
             encode_pixel_data(b'', **kwargs)
 
+    def test_no_byteorder_u8(self):
+        """Test exception raised if invalid byteorder."""
+        kwargs = {
+            'rows': 1,
+            'columns': 1,
+            'samples_per_pixel': 1,
+            'bits_allocated': 8,
+            'byteorder': None,
+        }
+
+        assert b'\x00\x01' == encode_pixel_data(b'\x01', **kwargs)[64:]
+
     def test_bad_samples_raises(self):
         """Test exception raised if invalid samples per pixel."""
         kwargs = {
