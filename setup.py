@@ -1,21 +1,15 @@
 
-import os
-import sys
+from pathlib import Path
 from setuptools import setup, find_packages
 from setuptools_rust import Binding, RustExtension
 
-import subprocess
-from distutils.command.build import build as build_orig
-import distutils.sysconfig
 
+VERSION_FILE = Path(__file__).parent / "rle" / '_version.py'
+with open(VERSION_FILE) as f:
+    exec(f.read())
 
-
-VERSION_FILE = os.path.join('rle', '_version.py')
-with open(VERSION_FILE) as fp:
-    exec(fp.read())
-
-with open('README.md', 'r') as fp:
-    long_description = fp.read()
+with open('README.md', 'r') as f:
+    long_description = f.read()
 
 setup(
     name = 'pylibjpeg-rle',
@@ -39,15 +33,13 @@ setup(
         "Intended Audience :: Developers",
         "Intended Audience :: Healthcare Industry",
         "Intended Audience :: Science/Research",
-        #"Development Status :: 3 - Alpha",
-        #"Development Status :: 4 - Beta",
         "Development Status :: 5 - Production/Stable",
         "Natural Language :: English",
         "Programming Language :: Rust",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Operating System :: MacOS :: MacOS X",
         "Operating System :: POSIX :: Linux",
         "Operating System :: Microsoft :: Windows",
@@ -58,7 +50,7 @@ setup(
     package_data = {'': ['*.txt', '*.rs', '*.pyx']},
     include_package_data = True,
     zip_safe = False,
-    python_requires = ">=3.6",
+    python_requires = ">=3.7",
     setup_requires = ['setuptools>=18.0', 'setuptools-rust'],
     install_requires = ["numpy"],
     extras_require = {

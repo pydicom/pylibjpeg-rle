@@ -9,12 +9,12 @@ jobs:
     name: Build wheels for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     env:
-      CIBW_SKIP: "cp35-*"
+      CIBW_SKIP: "cp36-*"
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: [3.9]
+        python-version: ["3.10"]
 
     steps:
     - uses: actions/checkout@v2
@@ -35,7 +35,7 @@ jobs:
     - name: Install requirements
       run: |
         pip install -U pip
-        pip install cibuildwheel==1.10.0
+        pip install cibuildwheel==2.3.1
         pip install setuptools-rust
 
     - name: Build sdist

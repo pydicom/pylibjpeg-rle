@@ -1,7 +1,7 @@
 
 ## pylibjpeg-rle
 
-A fast DICOM ([PackBits](https://en.wikipedia.org/wiki/PackBits)) RLE plugin for [pylibjpeg](https://github.com/pydicom/pylibjpeg), written in Rust with a Python 3.6+ wrapper.
+A fast DICOM ([PackBits](https://en.wikipedia.org/wiki/PackBits)) RLE plugin for [pylibjpeg](https://github.com/pydicom/pylibjpeg), written in Rust with a Python 3.7+ wrapper.
 
 Linux, MacOS and Windows are all supported.
 
