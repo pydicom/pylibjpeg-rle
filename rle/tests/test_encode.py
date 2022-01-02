@@ -245,8 +245,7 @@ class TestEncodeFrame:
         encoded = encode_frame(ds.PixelData, *params, '<')
         decoded = _rle_decode_frame(encoded, *params)
 
-        dtype = pixel_dtype(ds).newbyteorder('>')
-        arr = np.frombuffer(decoded, dtype)
+        arr = np.frombuffer(decoded, pixel_dtype(ds))
 
         if ds.SamplesPerPixel == 1:
             arr = arr.reshape(ds.Rows, ds.Columns)

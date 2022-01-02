@@ -1,0 +1,14 @@
+.. _v1.2.0:
+
+1.2.0
+=====
+
+Enhancements
+............
+
+* Support decoding segments with non-conformant padding (:issue:`7`)
+
+Changes
+.......
+
+* Support for Python 3.6 has been dropped, while Python 3.10 is now supported

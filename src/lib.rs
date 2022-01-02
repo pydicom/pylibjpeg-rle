@@ -312,12 +312,12 @@ fn _decode_segment_into_frame(
             completely decoded"
         ).into()
     );
-    let err_eof = Err(
-        String::from(
-            "The end of the frame was reached before the segment was \
-            completely decoded"
-        ).into()
-    );
+    // let err_eof = Err(
+    //     String::from(
+    //         "The end of the frame was reached before the segment was \
+    //         completely decoded"
+    //     ).into()
+    // );
 
     loop {
         // `header_byte` is equivalent to N in the DICOM Standard
@@ -329,12 +329,21 @@ fn _decode_segment_into_frame(
             // however since using uint8 instead of int8 this will be
             // (256 - N + 1) times
             op_len = 257 - header_byte;
-            // Check we have enough encoded data and remaining frame
-            if (pos > max_offset) || (idx + op_len) > max_frame {
-                match pos > max_offset {
-                    true => return err_eod,
-                    false => return err_eof
+
+            // Check we have enough encoded data
+            if pos > max_offset {
+                return err_eod
+            }
+
+            // Check segment for excess padding
+            if (idx + op_len) > max_frame {
+                // Only copy until we reach the end of frame
+                for _ in 0..(max_frame - idx) {
+                    dst[idx] = src[pos];
+                    idx += bpp;
                 }
+
+                return Ok((idx - initial_offset) / bpp)
             }
 
             for _ in 0..op_len {
@@ -345,12 +354,21 @@ fn _decode_segment_into_frame(
         } else if header_byte < 128 {
             // Extend by literally copying the next (N + 1) bytes
             op_len = header_byte + 1;
-            // Check we have enough encoded data and remaining frame
-            if ((pos + header_byte) > max_offset) || (idx + op_len > max_frame) {
-                match (pos + header_byte) > max_offset {
-                    true => return err_eod,
-                    false => return err_eof
+
+            // Check we have enough encoded data
+            if (pos + header_byte) > max_offset {
+                return err_eod
+            }
+
+            // Check segment for excess padding
+            if (idx + op_len) > max_frame {
+                // Only extend until the end of frame
+                for ii in pos..pos + (max_frame - idx) {
+                    dst[idx] = src[ii];
+                    idx += bpp;
                 }
+
+                return Ok((idx - initial_offset) / bpp)
             }
 
             for ii in pos..pos + op_len {

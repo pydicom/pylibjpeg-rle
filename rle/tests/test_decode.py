@@ -136,25 +136,15 @@ class TestDecodeFrame:
         with pytest.raises(ValueError, match=msg):
             decode_frame(d + b'\x00' * 8, 1, 8, '<')
 
-    def test_insufficient_frame_literal_raises(self):
-        """Test exception if frame not large enough to hold segment on lit."""
-        msg = (
-            r"The end of the frame was reached before the segment was "
-            r"completely decoded"
-        )
+    def test_insufficient_frame_literal(self):
+        """Test segment with excess padding on lit."""
         d = self.as_bytes([64])
-        with pytest.raises(ValueError, match=msg):
-            decode_frame(d + b'\x00' * 8, 1, 8, '<')
+        assert decode_frame(d + b'\x00' * 8, 1, 8, '<') == b"\x00"
 
-    def test_insufficient_frame_copy_raises(self):
-        """Test exception if frame not large enough to hold segment on copy."""
-        msg = (
-            r"The end of the frame was reached before the segment was "
-            r"completely decoded"
-        )
+    def test_insufficient_frame_copy(self):
+        """Test segment withe excess padding on copy."""
         d = self.as_bytes([64])
-        with pytest.raises(ValueError, match=msg):
-            decode_frame(d + b'\xff\x00\x00', 1, 8, '<')
+        assert decode_frame(d + b'\xff\x00\x00', 1, 8, '<') == b"\x00"
 
     def test_insufficient_segment_copy_raises(self):
         """Test exception if insufficient segment data on copy."""
@@ -842,5 +832,14 @@ class TestGenerateFrames:
         gen = generate_frames(ds, reshape=True)
         arr = next(gen)
         assert (600, 800) == arr.shape
+        with pytest.raises(StopIteration):
+            next(gen)
+
+    def test_multi_sample(self):
+        ds = deepcopy(INDEX["SC_rgb_rle_16bit.dcm"]['ds'])
+
+        gen = generate_frames(ds, reshape=True)
+        arr = next(gen)
+        assert (100, 100, 3) == arr.shape
         with pytest.raises(StopIteration):
             next(gen)
