@@ -3,6 +3,8 @@ name: Build wheels and deploy to PyPI
 on:
   release:
     types: [ published ]
+  pull-request:
+    branches: [ master ]
 
 jobs:
   build_wheels:
@@ -48,7 +50,7 @@ jobs:
         python -m cibuildwheel --output-dir dist
       env:
           CIBW_BEFORE_ALL: |
-            curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y && rustup target add i686-pc-windows-msvc
+            curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y && rustup target add i686-pc-windows-msvc i686-unknown-linux-musl
           CIBW_ENVIRONMENT: 'PATH="$PATH:$HOME/.cargo/bin"'
 
     - uses: actions/upload-artifact@v2
