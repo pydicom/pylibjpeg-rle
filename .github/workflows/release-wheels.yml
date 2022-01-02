@@ -11,7 +11,7 @@ jobs:
     name: Build wheels for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     env:
-      CIBW_SKIP: "cp36-*"
+      CIBW_SKIP: "cp36-*,cp37-*,cp39-*,cp310-*"
     strategy:
       fail-fast: false
       matrix:
@@ -50,7 +50,7 @@ jobs:
         python -m cibuildwheel --output-dir dist
       env:
           CIBW_BEFORE_ALL: |
-            curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y && rustup target add i686-pc-windows-msvc i686-unknown-linux-musl
+            curl -sSf https://sh.rustup.rs | sh -s --m --profile minimal --default-toolchain stable -y && rustup target add i686-pc-windows-msvc i686-unknown-linux-musl
           CIBW_ENVIRONMENT: 'PATH="$PATH:$HOME/.cargo/bin"'
 
     - uses: actions/upload-artifact@v2
