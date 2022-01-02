@@ -834,3 +834,12 @@ class TestGenerateFrames:
         assert (600, 800) == arr.shape
         with pytest.raises(StopIteration):
             next(gen)
+
+    def test_multi_sample(self):
+        ds = deepcopy(INDEX["SC_rgb_rle_16bit.dcm"]['ds'])
+
+        gen = generate_frames(ds, reshape=True)
+        arr = next(gen)
+        assert (100, 100, 3) == arr.shape
+        with pytest.raises(StopIteration):
+            next(gen)

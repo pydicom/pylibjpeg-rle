@@ -153,6 +153,13 @@ class TestEncodePixelData:
         with pytest.raises(ValueError, match=msg):
             encode_pixel_data(b'', **kwargs)
 
+    def test_encode_using_dataset(self):
+        """Test encoding using a dataset"""
+        ds = INDEX_LEE["SC_rgb_32bit_2frame.dcm"]['ds']
+        src = ds.pixel_array[0].tobytes()
+        enc = encode_pixel_data(src, ds, "<")
+        assert enc[:10] == b"\x0C\x00\x00\x00\x40\x00\x00\x00\x08\x01"
+
     def test_no_byteorder_u8(self):
         """Test exception raised if invalid byteorder."""
         kwargs = {
