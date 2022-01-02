@@ -3,7 +3,7 @@ name: Build wheels and deploy to PyPI
 on:
   release:
     types: [ published ]
-  pull-request:
+  pull_request:
     branches: [ master ]
 
 jobs:
