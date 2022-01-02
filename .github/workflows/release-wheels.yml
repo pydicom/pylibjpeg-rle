@@ -11,7 +11,7 @@ jobs:
     name: Build wheels for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     env:
-      CIBW_SKIP: "cp36-*,cp37-*,cp39-*,cp310-*"
+      CIBW_SKIP: "cp36-* cp37-* cp39-* cp310-*"
     strategy:
       fail-fast: false
       matrix:
