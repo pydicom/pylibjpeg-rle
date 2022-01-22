@@ -50,7 +50,7 @@ setup(
     include_package_data = True,
     zip_safe = False,
     python_requires = ">=3.7",
-    install_requires = ["numpy"],
+    install_requires = ["numpy>=1.20"],
     extras_require = {
         'tests': ["pytest", "pydicom", "numpy"],
         'benchmarks': ["pydicom", "numpy", "asv"],
