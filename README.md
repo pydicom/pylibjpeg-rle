@@ -1,3 +1,7 @@
+[![Build Status](https://github.com/pydicom/pylibjpeg-rle/workflows/unit-tests/badge.svg)](https://github.com/pydicom/pylibjpeg-rle/actions?query=workflow%3Aunit-tests)
+[![codecov](https://codecov.io/gh/pydicom/pylibjpeg-rle/branch/master/graph/badge.svg)](https://codecov.io/gh/pydicom/pylibjpeg-rle)
+[![PyPI version](https://badge.fury.io/py/pylibjpeg-rle.svg)](https://badge.fury.io/py/pylibjpeg-rle)
+[![Python versions](https://img.shields.io/pypi/pyversions/pylibjpeg-rle.svg)](https://img.shields.io/pypi/pyversions/pylibjpeg-rle.svg)
 
 ## pylibjpeg-rle
 
@@ -18,7 +22,7 @@ Make sure [Python](https://www.python.org/), [Git](https://git-scm.com/) and
 ```bash
 git clone https://github.com/pydicom/pylibjpeg-rle
 cd pylibjpeg-rle
-python -m setup.py develop
+python -m pip install .
 ```
 
 ### Supported Transfer Syntaxes
@@ -31,14 +35,11 @@ python -m setup.py develop
 #### Decoding
 ##### With pylibjpeg
 
-Because pydicom defaults to its own RLE decoder you must specify the use
-of pylibjpeg when decompressing:
 ```python
 from pydicom import dcmread
 from pydicom.data import get_testdata_file
 
 ds = dcmread(get_testdata_file("OBXXXX1A_rle.dcm"))
-ds.decompress("pylibjpeg")
 arr = ds.pixel_array
 ```
 

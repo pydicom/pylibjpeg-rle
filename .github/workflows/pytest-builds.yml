@@ -1,10 +1,9 @@
-name: Run pytest
+name: unit-tests
 
 on:
   push:
     branches: [ master ]
   pull_request:
-    branches: [ master ]
 
 jobs:
   pytest:

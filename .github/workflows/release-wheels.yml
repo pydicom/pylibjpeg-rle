@@ -1,4 +1,4 @@
-name: Build wheels and deploy to PyPI
+name: release-deploy
 
 on:
   pull_request:
@@ -123,9 +123,6 @@ jobs:
             platform_id: macosx_x86_64
 
           # MacOS arm64
-          - os: macos-latest
-            python: 37
-            platform_id: macosx_arm64
           - os: macos-latest
             python: 38
             platform_id: macosx_arm64
