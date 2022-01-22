@@ -188,10 +188,6 @@ jobs:
       with:
         toolchain: stable
 
-    - uses: actions/checkout@v2
-      with:
-        submodules: true
-
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
@@ -205,9 +201,8 @@ jobs:
 
     - name: Install from package wheels and test
       run: |
-        python -m venv env/test
-        cd env
-        source test/bin/activate
+        python -m venv testwhl
+        source testwhl/bin/activate
         python -m pip install -U pip
         python -m pip install -U pytest pydicom pylibjpeg
         python -m pip uninstall -y pylibjpeg-rle
@@ -224,6 +219,7 @@ jobs:
         python -m pip install -U pytest pydicom pylibjpeg
         python -m pip uninstall -y pylibjpeg-rle
         python -m pip install git+https://github.com/pydicom/pylibjpeg-data
+        export PATH="$PATH:$HOME/.cargo/bin"
         python -m pip install -U dist/pylibjpeg-rle-*.tar.gz
         python -c "import pytest; pytest.main(['--pyargs', 'rle.tests'])"
         deactivate
