@@ -206,11 +206,10 @@ jobs:
     - name: Install from package wheels and test
       run: |
         python -m venv env/test
-        source env/test/bin/activate
+        cd env
+        source test/bin/activate
         python -m pip install -U pip
-        python -m pip install pytest pydicom pylibjpeg
-        python -m pip uninstall -y pylibjpeg-libjpeg
-        python -m pip uninstall -y pylibjpeg-openjpeg
+        python -m pip install -U pytest pydicom pylibjpeg
         python -m pip uninstall -y pylibjpeg-rle
         python -m pip install git+https://github.com/pydicom/pylibjpeg-data
         python -m pip install -U --find-links dist/ pylibjpeg-rle
@@ -219,12 +218,10 @@ jobs:
 
     - name: Install from package tarball and test
       run: |
-        python -m venv env/testsrc
-        source env/testsrc/bin/activate
+        python -m venv testsrc
+        source testsrc/bin/activate
         python -m pip install -U pip
-        python -m pip install pytest pydicom pylibjpeg
-        python -m pip uninstall -y pylibjpeg-libjpeg
-        python -m pip uninstall -y pylibjpeg-openjpeg
+        python -m pip install -U pytest pydicom pylibjpeg
         python -m pip uninstall -y pylibjpeg-rle
         python -m pip install git+https://github.com/pydicom/pylibjpeg-data
         python -m pip install -U dist/pylibjpeg-rle-*.tar.gz
