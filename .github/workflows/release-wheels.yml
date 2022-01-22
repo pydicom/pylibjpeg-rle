@@ -1,68 +1,234 @@
-name: Build wheels and deploy to PyPI
+name: release-deploy
 
 on:
   release:
     types: [ published ]
 
 jobs:
-  build_wheels:
-    name: Build wheels for ${{ matrix.os }}
+  build-sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+
+    - uses: actions/setup-python@v2
+      name: Install Python
+      with:
+        python-version: '3.10'
+
+    - name: Build sdist
+      run: |
+        python -m pip install -U pip
+        python -m pip install -U setuptools-rust
+        python -m pip install .
+        python setup.py sdist
+
+    - name: Store artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: wheels
+        path: ./dist
+
+  build-wheels:
+    name: Build wheel for cp${{ matrix.python }}-${{ matrix.platform_id }}-${{ matrix.manylinux_image }}
     runs-on: ${{ matrix.os }}
-    env:
-      CIBW_SKIP: "cp36-* *-musl*"
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.10"]
+        include:
+          # Windows 32 bit
+          - os: windows-latest
+            python: 37
+            platform_id: win32
+          - os: windows-latest
+            python: 38
+            platform_id: win32
+          - os: windows-latest
+            python: 39
+            platform_id: win32
+          - os: windows-latest
+            python: 310
+            platform_id: win32
+
+          # Windows 64 bit
+          - os: windows-latest
+            python: 37
+            platform_id: win_amd64
+          - os: windows-latest
+            python: 38
+            platform_id: win_amd64
+          - os: windows-latest
+            python: 39
+            platform_id: win_amd64
+          - os: windows-latest
+            python: 310
+            platform_id: win_amd64
+
+          # Linux 64 bit manylinux2010
+          - os: ubuntu-latest
+            python: 37
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux2010
+          - os: ubuntu-latest
+            python: 38
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux2010
+          - os: ubuntu-latest
+            python: 39
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux2010
+          - os: ubuntu-latest
+            python: 310
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux2010
+
+          # Linux 64 bit manylinux2014
+          - os: ubuntu-latest
+            python: 37
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux2014
+          - os: ubuntu-latest
+            python: 38
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux2014
+          - os: ubuntu-latest
+            python: 39
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux2014
+          - os: ubuntu-latest
+            python: 310
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux2014
+
+          # MacOS x86_64
+          - os: macos-latest
+            python: 37
+            platform_id: macosx_x86_64
+          - os: macos-latest
+            python: 38
+            platform_id: macosx_x86_64
+          - os: macos-latest
+            python: 39
+            platform_id: macosx_x86_64
+          - os: macos-latest
+            python: 310
+            platform_id: macosx_x86_64
+
+          # MacOS arm64
+          - os: macos-latest
+            python: 38
+            platform_id: macosx_arm64
+          - os: macos-latest
+            python: 39
+            platform_id: macosx_arm64
+          - os: macos-latest
+            python: 310
+            platform_id: macosx_arm64
 
     steps:
     - uses: actions/checkout@v2
       with:
         submodules: true
 
-    # Install rust
     - uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
 
-    # Install Python
     - uses: actions/setup-python@v2
       name: Install Python
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.9'
 
-    - name: Install requirements
+    - name: Install cibuildwheel
       run: |
-        pip install -U pip
-        pip install cibuildwheel==2.3.1
-        pip install setuptools-rust
-
-    - name: Build sdist
-      run: |
-         python setup.py sdist
+        python -m pip install -U pip
+        python -m pip install -U setuptools-rust
+        python -m pip install cibuildwheel==2.3.1
 
     - name: Build wheels
+      env:
+        CIBW_BUILD: cp${{ matrix.python }}-${{ matrix.platform_id }}
+        CIBW_ARCHS: all
+        CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.manylinux_image }}
+        CIBW_MANYLINUX_I686_IMAGE: ${{ matrix.manylinux_image }}
+        CIBW_BUILD_VERBOSITY: 1
+        CIBW_BEFORE_ALL: |
+          curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y && rustup target add i686-pc-windows-msvc
+        CIBW_ENVIRONMENT: 'PATH="$PATH:$HOME/.cargo/bin"'
       run: |
         python --version
         python -m cibuildwheel --output-dir dist
-      env:
-          CIBW_BEFORE_ALL: |
-            curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y && rustup target add i686-pc-windows-msvc
-          CIBW_ENVIRONMENT: 'PATH="$PATH:$HOME/.cargo/bin"'
 
-    - uses: actions/upload-artifact@v2
+    - name: Store artifacts
+      uses: actions/upload-artifact@v2
       with:
         name: wheels
         path: ./dist
+
+  test-package:
+    name: Test built package
+    needs: [ build-wheels, build-sdist ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.7', '3.8', '3.9', '3.10']
+
+    steps:
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Download the wheels
+      uses: actions/download-artifact@v2
+      with:
+        name: wheels
+        path: dist/
+
+    - name: Install from package wheels and test
+      run: |
+        python -m venv testwhl
+        source testwhl/bin/activate
+        python -m pip install -U pip
+        python -m pip install -U pytest pydicom pylibjpeg
+        python -m pip uninstall -y pylibjpeg-rle
+        python -m pip install git+https://github.com/pydicom/pylibjpeg-data
+        python -m pip install -U --find-links dist/ pylibjpeg-rle
+        python -c "import pytest; pytest.main(['--pyargs', 'rle.tests'])"
+        deactivate
+
+    - name: Install from package tarball and test
+      run: |
+        python -m venv testsrc
+        source testsrc/bin/activate
+        python -m pip install -U pip
+        python -m pip install -U pytest pydicom pylibjpeg
+        python -m pip uninstall -y pylibjpeg-rle
+        python -m pip install git+https://github.com/pydicom/pylibjpeg-data
+        export PATH="$PATH:$HOME/.cargo/bin"
+        python -m pip install -U dist/pylibjpeg-rle-*.tar.gz
+        python -c "import pytest; pytest.main(['--pyargs', 'rle.tests'])"
+        deactivate
 
   # The pypi upload fails with non-linux containers, so grab the uploaded
   #     artifacts and run using those
   # See: https://github.com/pypa/gh-action-pypi-publish/discussions/15
   deploy:
     name: Upload wheels to PyPI
-    needs:
-    - build_wheels
+    needs: [ test-package ]
     runs-on: ubuntu-latest
 
     steps:
@@ -71,13 +237,6 @@ jobs:
       with:
         name: wheels
         path: dist/
-
-    #- name: Publish package to Test PyPi
-    #  uses: pypa/gh-action-pypi-publish@master
-    #  with:
-    #    user: __token__
-    #    password: ${{ secrets.TEST_PYPI_PASSWORD }}
-    #    repository_url: https://test.pypi.org/legacy/
 
     - name: Publish package to PyPi
       uses: pypa/gh-action-pypi-publish@master

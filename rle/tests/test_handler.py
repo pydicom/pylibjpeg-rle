@@ -19,6 +19,22 @@ INDEX = get_indexed_datasets('1.2.840.10008.1.2.5')
 @pytest.mark.skipif(not HAVE_PYDICOM, reason="No pydicom")
 class TestDecodePixelData:
     """Tests for the plugin's decoder interface."""
+    def test_no_dataset_kwargs_raises(self):
+        """Test plugin decoder with no dataset or kwargs raises"""
+        ds = INDEX["OBXXXX1A_rle.dcm"]['ds']
+        assert ds.file_meta.TransferSyntaxUID == RLELossless
+        assert 8 == ds.BitsAllocated
+        assert 1 == ds.SamplesPerPixel
+        assert 0 == ds.PixelRepresentation
+        assert 600 == ds.Rows
+        assert 800 == ds.Columns
+        assert 1 == getattr(ds, 'NumberOfFrames', 1)
+
+        frame = next(generate_pixel_data_frame(ds.PixelData))
+        msg = r"Either `ds` or `\*\*kwargs` must be used"
+        with pytest.raises(ValueError, match=msg):
+            decode_pixel_data(frame)
+
     def test_u8_1s_1f(self):
         """Test plugin decoder for 8 bit, 1 sample, 1 frame data."""
         ds = INDEX["OBXXXX1A_rle.dcm"]['ds']

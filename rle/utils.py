@@ -8,7 +8,9 @@ import numpy as np
 from rle._rle import decode_frame, decode_segment, encode_frame, encode_segment
 
 
-def decode_pixel_data(src: bytes, ds: "Dataset", **kwargs) -> "np.ndarray":
+def decode_pixel_data(
+    src: bytes, ds: Optional["Dataset"] = None, **kwargs
+) -> "np.ndarray":
     """Return the decoded RLE Lossless data as a :class:`numpy.ndarray`.
 
     Intended for use with *pydicom* ``Dataset`` objects.
@@ -17,10 +19,19 @@ def decode_pixel_data(src: bytes, ds: "Dataset", **kwargs) -> "np.ndarray":
     ----------
     src : bytes
         A single encoded image frame to be decoded.
-    ds : pydicom.dataset.Dataset
+    ds : pydicom.dataset.Dataset, optional
         A :class:`~pydicom.dataset.Dataset` containing the group ``0x0028``
-        elements corresponding to the image frame.
+        elements corresponding to the image frame. If not used then `kwargs`
+        must be supplied.
     **kwargs
+        Required keys if `ds` is not supplied:
+
+        * ``"rows"``: :class:`int` - the number of rows in the decoded image
+        * ``"columns"``: :class:`int` - the number of columns in the decoded
+          image
+        * ``"bits_allocated"``: :class:`int` - the number of bits allocated
+          to each pixel
+
         Current decoding options are:
 
         * ``{'byteorder': str}`` specify the byte ordering for the decoded data
@@ -41,8 +52,19 @@ def decode_pixel_data(src: bytes, ds: "Dataset", **kwargs) -> "np.ndarray":
     """
     byteorder = kwargs.get('byteorder', '<')
 
+    columns = kwargs.get("columns")
+    rows = kwargs.get("rows")
+    bits_allocated = kwargs.get("bits_allocated")
+    no_kwargs = None in (columns, rows, bits_allocated)
+    if ds is None and no_kwargs:
+        raise ValueError("Either `ds` or `**kwargs` must be used")
+
+    columns = ds.get("Columns", columns)
+    rows = ds.get("Rows", rows)
+    bits_allocated = ds.get("BitsAllocated", bits_allocated)
+
     return np.frombuffer(
-        decode_frame(src, ds.Rows * ds.Columns, ds.BitsAllocated, byteorder),
+        decode_frame(src, rows * columns, bits_allocated, byteorder),
         dtype='uint8'
     )
 

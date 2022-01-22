@@ -4,8 +4,10 @@ from setuptools import setup, find_packages
 from setuptools_rust import Binding, RustExtension
 
 
-VERSION_FILE = Path(__file__).parent / "rle" / '_version.py'
-with open(VERSION_FILE) as f:
+PACKAGE_DIR = Path(__file__).parent / "rle"
+
+
+with open(PACKAGE_DIR  / '_version.py') as f:
     exec(f.read())
 
 with open('README.md', 'r') as f:
@@ -24,10 +26,7 @@ setup(
     author_email = "scaramallion@users.noreply.github.com",
     url = "https://github.com/pydicom/pylibjpeg-rle",
     license = "MIT",
-    keywords = (
-        "dicom pydicom python medicalimaging radiotherapy oncology imaging "
-        "radiology nuclearmedicine rle pylibjpeg rust"
-    ),
+    keywords = "dicom pydicom python rle pylibjpeg rust",
     classifiers = [
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Intended Audience :: Developers",
@@ -51,8 +50,7 @@ setup(
     include_package_data = True,
     zip_safe = False,
     python_requires = ">=3.7",
-    setup_requires = ['setuptools>=18.0', 'setuptools-rust'],
-    install_requires = ["numpy"],
+    install_requires = ["numpy>=1.20"],
     extras_require = {
         'tests': ["pytest", "pydicom", "numpy"],
         'benchmarks': ["pydicom", "numpy", "asv"],
