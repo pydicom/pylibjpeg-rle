@@ -1,0 +1,9 @@
+.. _v1.3.0:
+
+1.3.0
+=====
+
+Enhancements
+............
+
+* Update decoding interface to allow passing kwargs instead of a dataset
