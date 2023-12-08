@@ -200,7 +200,7 @@ jobs:
         CIBW_MANYLINUX_I686_IMAGE: ${{ matrix.manylinux_image }}
         CIBW_BUILD_VERBOSITY: 1
         CIBW_BEFORE_ALL: |
-          curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y && rustup target add i686-pc-windows-msvc
+          curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y && rustup target add i686-pc-windows-msvc && rustup target add aarch64-apple-darwin
         CIBW_ENVIRONMENT: 'PATH="$PATH:$HOME/.cargo/bin"'
       run: |
         python --version
