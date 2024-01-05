@@ -1,6 +1,39 @@
 [build-system]
-requires = [
-    "setuptools>=18.0",
-    "setuptools-rust",
-    "wheel",
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+
+[project]
+name = "rle"
+version = "2.0.0.dev0"
+description = """\
+    "Python bindings for a fast RLE decoder/encoder, with a focus on "\
+    "use as a plugin for pylibjpeg"\
+"""
+classifiers = [
+    "License :: OSI Approved :: MIT",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Healthcare Industry",
+    "Intended Audience :: Science/Research",
+    "Development Status :: 5 - Production/Stable",
+    "Natural Language :: English",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Topic :: Software Development :: Libraries",
 ]
+requires-python = ">=3.8"
+
+
+[project.entry-points."pylibjpeg.pixel_data_decoders"]
+"1.2.840.10008.1.2.5" = "rle:decode_pixel_data"
+
+[project.entry-points."pylibjpeg.pixel_data_encoders"]
+"1.2.840.10008.1.2.5" = "rle:encode_pixel_data"

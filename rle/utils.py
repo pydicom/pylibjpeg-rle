@@ -1,15 +1,28 @@
 """Utility functions."""
 
+import enum
 import sys
-from typing import Generator, Optional
+from typing import Generator, Optional, Any, TYPE_CHECKING
 
 import numpy as np
 
 from rle._rle import decode_frame, decode_segment, encode_frame, encode_segment
 
 
+if TYPE_CHECKING:  # pragma: no cover
+    from pydicom.dataset import Dataset
+
+
+class Version(enum.IntEnum):
+    v1 = 1
+    v2 = 2
+
+
 def decode_pixel_data(
-    src: bytes, ds: Optional["Dataset"] = None, **kwargs
+    src: bytes,
+    ds: Optional["Dataset"] = None,
+    version = Version.v1,
+    **kwargs: Any,
 ) -> "np.ndarray":
     """Return the decoded RLE Lossless data as a :class:`numpy.ndarray`.
 
@@ -23,6 +36,10 @@ def decode_pixel_data(
         A :class:`~pydicom.dataset.Dataset` containing the group ``0x0028``
         elements corresponding to the image frame. If not used then `kwargs`
         must be supplied.
+    version : int, optional
+
+        * If ``1`` (default) then return the image data as an :class:`numpy.ndarray`
+        * If ``2`` then return the image data as :class:`bytearray`
     **kwargs
         Required keys if `ds` is not supplied:
 
@@ -40,10 +57,8 @@ def decode_pixel_data(
 
     Returns
     -------
-    numpy.ndarray
-        A 1D array of ``numpy.uint8`` containing the decoded frame data,
-        with planar configuration 1 and, by default, little-endian byte
-        ordering.
+    bytearray | numpy.ndarray
+        The image data as either a bytearray or ndarray.
 
     Raises
     ------
@@ -63,10 +78,11 @@ def decode_pixel_data(
     rows = ds.get("Rows", rows)
     bits_allocated = ds.get("BitsAllocated", bits_allocated)
 
-    return np.frombuffer(
-        decode_frame(src, rows * columns, bits_allocated, byteorder),
-        dtype='uint8'
-    )
+    frame = decode_frame(src, rows * columns, bits_allocated, byteorder)
+    if version == Version.v1:
+        return np.frombuffer(frame, dtype='uint8')
+
+    return frame
 
 
 def encode_array(
