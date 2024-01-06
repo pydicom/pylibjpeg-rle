@@ -256,6 +256,11 @@ jobs:
     name: Upload wheels to PyPI
     needs: [ test-package ]
     runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/pylibjpeg-rle/
+    permissions:
+      id-token: write
 
     steps:
     - name: Download the wheels
@@ -266,6 +271,3 @@ jobs:
 
     - name: Publish package to PyPi
       uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        user: __token__
-        password: ${{ secrets.PYPI_PASSWORD }}
