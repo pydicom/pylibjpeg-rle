@@ -26,8 +26,8 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 description = """\
-    "Python bindings for a fast RLE decoder/encoder, with a focus on "\
-    "use as a plugin for pylibjpeg"\
+    Python bindings for a fast RLE decoder/encoder, with a focus on \
+    use as a plugin for pylibjpeg\
 """
 keywords = ["dicom pydicom python rle pylibjpeg rust"]
 license = "MIT"
