@@ -3,6 +3,9 @@ name: release-deploy
 on:
   release:
     types: [ published ]
+  # push:
+  #   branches: [ main ]
+  # pull_request:
 
 jobs:
   build-sdist:
@@ -14,9 +17,9 @@ jobs:
       with:
         submodules: true
 
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
+    - name: Install Rust (stable)
+      run:
+        curl https://sh.rustup.rs -sSf | sh -s -- -y
 
     - uses: actions/setup-python@v5
       name: Install Python
@@ -26,14 +29,13 @@ jobs:
     - name: Build sdist
       run: |
         python -m pip install -U pip
-        python -m pip install -U setuptools-rust
-        python -m pip install .
-        python setup.py sdist
+        python -m pip install -U maturin build
+        python -m build --sdist -o dist
 
     - name: Store artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: wheels
+        name: sdist
         path: ./dist
 
   build-wheels:
@@ -44,9 +46,6 @@ jobs:
       matrix:
         include:
           # Windows 32 bit
-          - os: windows-latest
-            python: 37
-            platform_id: win32
           - os: windows-latest
             python: 38
             platform_id: win32
@@ -65,9 +64,6 @@ jobs:
 
           # Windows 64 bit
           - os: windows-latest
-            python: 37
-            platform_id: win_amd64
-          - os: windows-latest
             python: 38
             platform_id: win_amd64
           - os: windows-latest
@@ -85,10 +81,6 @@ jobs:
 
           # Linux 64 bit manylinux2014
           - os: ubuntu-latest
-            python: 37
-            platform_id: manylinux_x86_64
-            manylinux_image: manylinux2014
-          - os: ubuntu-latest
             python: 38
             platform_id: manylinux_x86_64
             manylinux_image: manylinux2014
@@ -109,10 +101,24 @@ jobs:
             platform_id: manylinux_x86_64
             manylinux_image: manylinux2014
 
+          # Linux aarch64
+          - os: ubuntu-latest
+            python: 38
+            platform_id: manylinux_aarch64
+          - os: ubuntu-latest
+            python: 39
+            platform_id: manylinux_aarch64
+          - os: ubuntu-latest
+            python: 310
+            platform_id: manylinux_aarch64
+          - os: ubuntu-latest
+            python: 311
+            platform_id: manylinux_aarch64
+          - os: ubuntu-latest
+            python: 312
+            platform_id: manylinux_aarch64
+
           # MacOS x86_64
-          - os: macos-latest
-            python: 37
-            platform_id: macosx_x86_64
           - os: macos-latest
             python: 38
             platform_id: macosx_x86_64
@@ -151,9 +157,15 @@ jobs:
       with:
         submodules: true
 
-    - uses: actions-rs/toolchain@v1
+    - name: Set up QEMU
+      if: ${{ matrix.platform_id == 'manylinux_aarch64' }}
+      uses: docker/setup-qemu-action@v3
       with:
-        toolchain: stable
+        platforms: arm64
+
+    - name: Install Rust (stable)
+      run:
+        curl https://sh.rustup.rs -sSf | sh -s -- -y
 
     - uses: actions/setup-python@v5
       name: Install Python
@@ -183,7 +195,7 @@ jobs:
     - name: Store artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: wheels
+        name: wheel-${{ matrix.python }}-${{ matrix.platform_id }}
         path: ./dist
 
   test-package:
@@ -194,12 +206,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11', '3.12']
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
 
     steps:
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
+    - name: Install Rust (stable)
+      run:
+        curl https://sh.rustup.rs -sSf | sh -s -- -y
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
@@ -209,8 +221,8 @@ jobs:
     - name: Download the wheels
       uses: actions/download-artifact@v4
       with:
-        name: wheels
         path: dist/
+        merge-multiple: true
 
     - name: Install from package wheels and test
       run: |
@@ -220,8 +232,8 @@ jobs:
         python -m pip install -U pytest pydicom pylibjpeg
         python -m pip uninstall -y pylibjpeg-rle
         python -m pip install git+https://github.com/pydicom/pylibjpeg-data
-        python -m pip install -U --find-links dist/ pylibjpeg-rle
-        python -c "import pytest; pytest.main(['--pyargs', 'rle.tests'])"
+        python -m pip install -U --pre --find-links dist/ pylibjpeg-rle
+        python -m pytest --pyargs rle.tests
         deactivate
 
     - name: Install from package tarball and test
@@ -233,8 +245,8 @@ jobs:
         python -m pip uninstall -y pylibjpeg-rle
         python -m pip install git+https://github.com/pydicom/pylibjpeg-data
         export PATH="$PATH:$HOME/.cargo/bin"
-        python -m pip install -U dist/pylibjpeg-rle-*.tar.gz
-        python -c "import pytest; pytest.main(['--pyargs', 'rle.tests'])"
+        python -m pip install -U dist/pylibjpeg*rle-*.tar.gz
+        python -m pytest --pyargs rle.tests
         deactivate
 
   # The pypi upload fails with non-linux containers, so grab the uploaded
@@ -249,8 +261,8 @@ jobs:
     - name: Download the wheels
       uses: actions/download-artifact@v4
       with:
-        name: wheels
         path: dist/
+        merge-multiple: true
 
     - name: Publish package to PyPi
       uses: pypa/gh-action-pypi-publish@master

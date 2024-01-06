@@ -8,9 +8,9 @@ use pyo3::types::{PyBytes, PyByteArray};
 use pyo3::exceptions::{PyValueError};
 
 
-// Python _rle module members
+// Python rle module members
 #[pymodule]
-fn _rle(_: Python, m: &PyModule) -> PyResult<()> {
+fn rle(_: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_header, m)?).unwrap();
     m.add_function(wrap_pyfunction!(decode_segment, m)?).unwrap();
     m.add_function(wrap_pyfunction!(decode_frame, m)?).unwrap();
