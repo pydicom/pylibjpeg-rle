@@ -1,12 +1,9 @@
-
 import asv
 import timeit
 
 from pydicom import dcmread
 from pydicom.encaps import generate_pixel_data_frame
-from pydicom.pixel_data_handlers.rle_handler import (
-    get_pixeldata, _rle_decode_frame
-)
+from pydicom.pixel_data_handlers.rle_handler import get_pixeldata, _rle_decode_frame
 from pydicom.pixel_data_handlers.util import reshape_pixel_array
 from pydicom.uid import RLELossless
 
@@ -16,18 +13,18 @@ from rle.utils import pixel_array, decode_frame
 INDEX = get_indexed_datasets(RLELossless)
 
 
-u8_1s_1f = INDEX["OBXXXX1A_rle.dcm"]['ds']
-u8_1s_2f = INDEX["OBXXXX1A_rle_2frame.dcm"]['ds']
-u8_3s_1f = INDEX["SC_rgb_rle.dcm"]['ds']
-u8_3s_2f = INDEX["SC_rgb_rle_2frame.dcm"]['ds']
-i16_1s_1f = INDEX["MR_small_RLE.dcm"]['ds']
-u16_1s_10f = INDEX["emri_small_RLE.dcm"]['ds']
-u16_3s_1f = INDEX["SC_rgb_rle_16bit.dcm"]['ds']
-u16_3s_2f = INDEX["SC_rgb_rle_16bit_2frame.dcm"]['ds']
-u32_1s_1f = INDEX["rtdose_rle_1frame.dcm"]['ds']
-u32_1s_2f = INDEX["rtdose_rle.dcm"]['ds']
-u32_3s_1f = INDEX["SC_rgb_rle_32bit.dcm"]['ds']
-u32_3s_2f = INDEX["SC_rgb_rle_32bit_2frame.dcm"]['ds']
+u8_1s_1f = INDEX["OBXXXX1A_rle.dcm"]["ds"]
+u8_1s_2f = INDEX["OBXXXX1A_rle_2frame.dcm"]["ds"]
+u8_3s_1f = INDEX["SC_rgb_rle.dcm"]["ds"]
+u8_3s_2f = INDEX["SC_rgb_rle_2frame.dcm"]["ds"]
+i16_1s_1f = INDEX["MR_small_RLE.dcm"]["ds"]
+u16_1s_10f = INDEX["emri_small_RLE.dcm"]["ds"]
+u16_3s_1f = INDEX["SC_rgb_rle_16bit.dcm"]["ds"]
+u16_3s_2f = INDEX["SC_rgb_rle_16bit_2frame.dcm"]["ds"]
+u32_1s_1f = INDEX["rtdose_rle_1frame.dcm"]["ds"]
+u32_1s_2f = INDEX["rtdose_rle.dcm"]["ds"]
+u32_3s_1f = INDEX["SC_rgb_rle_32bit.dcm"]["ds"]
+u32_3s_2f = INDEX["SC_rgb_rle_32bit_2frame.dcm"]["ds"]
 
 
 class TimeDecodePixelData_NumpyHandler:
@@ -151,17 +148,9 @@ if __name__ == "__main__":
 
     print(
         timeit.timeit(
-            "_rle_decode_frame(frame, r, c, n, b)",
-            number=nr_runs,
-            globals=globals()
+            "_rle_decode_frame(frame, r, c, n, b)", number=nr_runs, globals=globals()
         )
     )
 
     p = r * c
-    print(
-        timeit.timeit(
-            "decode_frame(frame, p, b)",
-            number=nr_runs,
-            globals=globals()
-        )
-    )
+    print(timeit.timeit("decode_frame(frame, p, b)", number=nr_runs, globals=globals()))

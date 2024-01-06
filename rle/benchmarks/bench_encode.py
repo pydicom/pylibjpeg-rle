@@ -1,4 +1,3 @@
-
 import asv
 import timeit
 
@@ -6,7 +5,10 @@ from pydicom import dcmread
 from pydicom.data import get_testdata_file
 from pydicom.encaps import generate_pixel_data_frame
 from pydicom.pixel_data_handlers.rle_handler import (
-    get_pixeldata, _rle_decode_frame, _rle_encode_row, rle_encode_frame
+    get_pixeldata,
+    _rle_decode_frame,
+    _rle_encode_row,
+    rle_encode_frame,
 )
 from pydicom.pixel_data_handlers.util import reshape_pixel_array
 from pydicom.uid import RLELossless
@@ -49,6 +51,7 @@ class TimeEncodeRow:
 
 class TimePYDEncodeFrame:
     """Time tests for rle_handler.rle_encode_frame."""
+
     def setup(self):
         ds = dcmread(EXPL_8_1_1F)
         self.arr8_1 = ds.pixel_array
@@ -100,27 +103,51 @@ class TimeRLEEncodeFrame:
     def setup(self):
         ds = dcmread(EXPL_8_1_1F)
         self.ds8_1 = (
-            ds.PixelData, ds.Rows, ds.Columns, ds.SamplesPerPixel, ds.BitsAllocated,
+            ds.PixelData,
+            ds.Rows,
+            ds.Columns,
+            ds.SamplesPerPixel,
+            ds.BitsAllocated,
         )
         ds = dcmread(EXPL_8_3_1F)
         self.ds8_3 = (
-            ds.PixelData, ds.Rows, ds.Columns, ds.SamplesPerPixel, ds.BitsAllocated,
+            ds.PixelData,
+            ds.Rows,
+            ds.Columns,
+            ds.SamplesPerPixel,
+            ds.BitsAllocated,
         )
         ds = dcmread(EXPL_16_1_1F)
         self.ds16_1 = (
-            ds.PixelData, ds.Rows, ds.Columns, ds.SamplesPerPixel, ds.BitsAllocated,
+            ds.PixelData,
+            ds.Rows,
+            ds.Columns,
+            ds.SamplesPerPixel,
+            ds.BitsAllocated,
         )
         ds = dcmread(EXPL_16_3_1F)
         self.ds16_3 = (
-            ds.PixelData, ds.Rows, ds.Columns, ds.SamplesPerPixel, ds.BitsAllocated,
+            ds.PixelData,
+            ds.Rows,
+            ds.Columns,
+            ds.SamplesPerPixel,
+            ds.BitsAllocated,
         )
         ds = dcmread(EXPL_32_1_1F)
         self.ds32_1 = (
-            ds.PixelData, ds.Rows, ds.Columns, ds.SamplesPerPixel, ds.BitsAllocated,
+            ds.PixelData,
+            ds.Rows,
+            ds.Columns,
+            ds.SamplesPerPixel,
+            ds.BitsAllocated,
         )
         ds = dcmread(EXPL_32_3_1F)
         self.ds32_3 = (
-            ds.PixelData, ds.Rows, ds.Columns, ds.SamplesPerPixel, ds.BitsAllocated,
+            ds.PixelData,
+            ds.Rows,
+            ds.Columns,
+            ds.SamplesPerPixel,
+            ds.BitsAllocated,
         )
 
         self.no_runs = 1000
@@ -128,29 +155,29 @@ class TimeRLEEncodeFrame:
     def time_08_1(self):
         """Time encoding 8 bit 1 sample/pixel."""
         for ii in range(self.no_runs):
-            encode_frame(*self.ds8_1, '<')
+            encode_frame(*self.ds8_1, "<")
 
     def time_08_3(self):
         """Time encoding 8 bit 3 sample/pixel."""
         for ii in range(self.no_runs):
-            encode_frame(*self.ds8_3, '<')
+            encode_frame(*self.ds8_3, "<")
 
     def time_16_1(self):
         """Time encoding 16 bit 1 sample/pixel."""
         for ii in range(self.no_runs):
-            encode_frame(*self.ds16_1, '<')
+            encode_frame(*self.ds16_1, "<")
 
     def time_16_3(self):
         """Time encoding 16 bit 3 sample/pixel."""
         for ii in range(self.no_runs):
-            encode_frame(*self.ds16_3, '<')
+            encode_frame(*self.ds16_3, "<")
 
     def time_32_1(self):
         """Time encoding 32 bit 1 sample/pixel."""
         for ii in range(self.no_runs):
-            encode_frame(*self.ds32_1, '<')
+            encode_frame(*self.ds32_1, "<")
 
     def time_32_3(self):
         """Time encoding 32 bit 3 sample/pixel."""
         for ii in range(self.no_runs):
-            encode_frame(*self.ds32_3, '<')
+            encode_frame(*self.ds32_3, "<")

@@ -1,0 +1,12 @@
+.. _v2.0.0:
+
+2.0.0
+=====
+
+Enhancements
+............
+
+* Update pixel data decoding interface to allow version 2
+* Add type hints
+* Move to pyproject.toml
+* Move to building with maturin

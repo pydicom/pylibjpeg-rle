@@ -3,6 +3,9 @@ name: release-deploy
 on:
   release:
     types: [ published ]
+  push:
+    branches: [ main ]
+  pull_request:
 
 jobs:
   build-sdist:
@@ -26,14 +29,13 @@ jobs:
     - name: Build sdist
       run: |
         python -m pip install -U pip
-        python -m pip install -U setuptools-rust
-        python -m pip install .
-        python setup.py sdist
+        python -m pip install -U maturin build
+        python -m build --sdist -o sdist
 
     - name: Store artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: wheels
+        name: sdist
         path: ./dist
 
   build-wheels:
@@ -44,9 +46,6 @@ jobs:
       matrix:
         include:
           # Windows 32 bit
-          - os: windows-latest
-            python: 37
-            platform_id: win32
           - os: windows-latest
             python: 38
             platform_id: win32
@@ -65,9 +64,6 @@ jobs:
 
           # Windows 64 bit
           - os: windows-latest
-            python: 37
-            platform_id: win_amd64
-          - os: windows-latest
             python: 38
             platform_id: win_amd64
           - os: windows-latest
@@ -84,10 +80,6 @@ jobs:
             platform_id: win_amd64
 
           # Linux 64 bit manylinux2014
-          - os: ubuntu-latest
-            python: 37
-            platform_id: manylinux_x86_64
-            manylinux_image: manylinux2014
           - os: ubuntu-latest
             python: 38
             platform_id: manylinux_x86_64
@@ -111,9 +103,6 @@ jobs:
 
           # MacOS x86_64
           - os: macos-latest
-            python: 37
-            platform_id: macosx_x86_64
-          - os: macos-latest
             python: 38
             platform_id: macosx_x86_64
           - os: macos-latest
@@ -130,9 +119,6 @@ jobs:
             platform_id: macosx_x86_64
 
           # MacOS arm64
-          - os: macos-latest
-            python: 38
-            platform_id: macosx_arm64
           - os: macos-latest
             python: 39
             platform_id: macosx_arm64
@@ -183,7 +169,7 @@ jobs:
     - name: Store artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: wheels
+        name: wheel-${{ matrix.python }}-${{ matrix.platform_id }}
         path: ./dist
 
   test-package:
@@ -209,8 +195,8 @@ jobs:
     - name: Download the wheels
       uses: actions/download-artifact@v2
       with:
-        name: wheels
         path: dist/
+        merge-multiple: true
 
     - name: Install from package wheels and test
       run: |
@@ -220,8 +206,8 @@ jobs:
         python -m pip install -U pytest pydicom pylibjpeg
         python -m pip uninstall -y pylibjpeg-rle
         python -m pip install git+https://github.com/pydicom/pylibjpeg-data
-        python -m pip install -U --find-links dist/ pylibjpeg-rle
-        python -c "import pytest; pytest.main(['--pyargs', 'rle.tests'])"
+        python -m pip install -U --pre --find-links dist/ pylibjpeg-rle
+        python -m pytest --pyargs rle.tests
         deactivate
 
     - name: Install from package tarball and test
@@ -233,27 +219,27 @@ jobs:
         python -m pip uninstall -y pylibjpeg-rle
         python -m pip install git+https://github.com/pydicom/pylibjpeg-data
         export PATH="$PATH:$HOME/.cargo/bin"
-        python -m pip install -U dist/pylibjpeg-rle-*.tar.gz
-        python -c "import pytest; pytest.main(['--pyargs', 'rle.tests'])"
+        python -m pip install -U dist/pylibjpeg*rle-*.tar.gz
+        python -m pytest --pyargs rle.tests
         deactivate
 
   # The pypi upload fails with non-linux containers, so grab the uploaded
   #     artifacts and run using those
   # See: https://github.com/pypa/gh-action-pypi-publish/discussions/15
-  deploy:
-    name: Upload wheels to PyPI
-    needs: [ test-package ]
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Download the wheels
-      uses: actions/download-artifact@v2
-      with:
-        name: wheels
-        path: dist/
-
-    - name: Publish package to PyPi
-      uses: pypa/gh-action-pypi-publish@master
-      with:
-        user: __token__
-        password: ${{ secrets.PYPI_PASSWORD }}
+  # deploy:
+  #   name: Upload wheels to PyPI
+  #   needs: [ test-package ]
+  #   runs-on: ubuntu-latest
+  #
+  #   steps:
+  #   - name: Download the wheels
+  #     uses: actions/download-artifact@v2
+  #     with:
+  #       name: wheels
+  #       path: dist/
+  #
+  #   - name: Publish package to PyPi
+  #     uses: pypa/gh-action-pypi-publish@master
+  #     with:
+  #       user: __token__
+  #       password: ${{ secrets.PYPI_PASSWORD }}

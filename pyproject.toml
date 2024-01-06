@@ -2,14 +2,10 @@
 requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
-
 [project]
-name = "rle"
-version = "2.0.0.dev0"
-description = """\
-    "Python bindings for a fast RLE decoder/encoder, with a focus on "\
-    "use as a plugin for pylibjpeg"\
-"""
+authors = [
+  {name = "pylibjpeg-rle contributors"}
+]
 classifiers = [
     "License :: OSI Approved :: MIT",
     "Intended Audience :: Developers",
@@ -29,7 +25,37 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
     "Topic :: Software Development :: Libraries",
 ]
-requires-python = ">=3.8"
+description = """\
+    "Python bindings for a fast RLE decoder/encoder, with a focus on "\
+    "use as a plugin for pylibjpeg"\
+"""
+keywords = ["dicom pydicom python rle pylibjpeg rust"]
+license = "MIT"
+name = "pylibjpeg-rle"
+readme = "README.md"
+version = "2.0.0.dev0"
+
+[project.urls]
+homepage = "https://github.com/pydicom/pylibjpeg-rle"
+
+
+[tool.poetry.dependencies]
+python = "^3.8"
+numpy = "^1.24"
+
+# Optional dependencies
+black = { version = "^23.1", optional = true }
+coverage = { version = "^7.3", optional = true }
+mypy = { version = "^1.7", optional = true }
+pytest = { version = "^7.4", optional = true }
+pytest-cov = { version = "^4.1", optional = true }
+pydicom = { version = "^2.4", optional = true }
+pylibjpeg = { git = "https://github.com/pydicom/pylibjpeg.git", optional = true}
+pylibjpeg-data = { git = "https://github.com/pydicom/pylibjpeg-data.git", optional = true}
+
+[tool.poetry.extras]
+dev = ["black", "coverage", "mypy", "pytest", "pytest-cov"]
+tests = ["coverage", "pytest", "pytest-cov", "pylibjpeg-data", "pylibjpeg", "pydicom"]
 
 
 [project.entry-points."pylibjpeg.pixel_data_decoders"]
@@ -37,3 +63,22 @@ requires-python = ">=3.8"
 
 [project.entry-points."pylibjpeg.pixel_data_encoders"]
 "1.2.840.10008.1.2.5" = "rle:encode_pixel_data"
+
+[tool.coverage.run]
+omit = [
+    "libjpeg/tests/*",
+]
+
+[tool.mypy]
+python_version = "3.8"
+files = "rle"
+exclude = ["rle/tests", "rle/benchmarks"]
+show_error_codes = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_unreachable = false
+ignore_missing_imports = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
