@@ -25,9 +25,9 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
+    - name: Install Rust (stable)
+      run:
+        curl https://sh.rustup.rs -sSf | sh -s -- -y
 
     - name: Install dependencies
       run: |
