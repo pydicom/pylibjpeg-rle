@@ -7,7 +7,7 @@ authors = [
   {name = "pylibjpeg-rle contributors"}
 ]
 classifiers = [
-    "License :: OSI Approved :: MIT",
+    "License :: OSI Approved :: MIT License",
     "Intended Audience :: Developers",
     "Intended Audience :: Healthcare Industry",
     "Intended Audience :: Science/Research",
