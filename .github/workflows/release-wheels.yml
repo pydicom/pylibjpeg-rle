@@ -157,6 +157,12 @@ jobs:
       with:
         submodules: true
 
+    - name: Set up QEMU
+      if: ${{ matrix.platform_id == 'manylinux_aarch64' }}
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+
     - name: Install Rust (stable)
       run:
         curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -246,20 +252,20 @@ jobs:
   # The pypi upload fails with non-linux containers, so grab the uploaded
   #     artifacts and run using those
   # See: https://github.com/pypa/gh-action-pypi-publish/discussions/15
-  # deploy:
-  #   name: Upload wheels to PyPI
-  #   needs: [ test-package ]
-  #   runs-on: ubuntu-latest
-  #
-  #   steps:
-  #   - name: Download the wheels
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       name: wheels
-  #       path: dist/
-  #
-  #   - name: Publish package to PyPi
-  #     uses: pypa/gh-action-pypi-publish@master
-  #     with:
-  #       user: __token__
-  #       password: ${{ secrets.PYPI_PASSWORD }}
+  deploy:
+    name: Upload wheels to PyPI
+    needs: [ test-package ]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download the wheels
+      uses: actions/download-artifact@v4
+      with:
+        path: dist/
+        merge-multiple: true
+
+    - name: Publish package to PyPi
+      uses: pypa/gh-action-pypi-publish@master
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_PASSWORD }}
