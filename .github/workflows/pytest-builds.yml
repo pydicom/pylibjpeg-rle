@@ -43,9 +43,5 @@ jobs:
         pytest --cov rle
 
     - name: Send coverage results
-      if: ${{ success() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.9' }}
-      run: |
-        bash <(curl --connect-timeout 10 --retry 10 --retry-max-time \
-        0 https://codecov.io/bash) || (sleep 30 && bash <(curl \
-        --connect-timeout 10 --retry 10 --retry-max-time \
-        0 https://codecov.io/bash))
+      if: ${{ success() }}
+      uses: codecov/codecov-action@v3
