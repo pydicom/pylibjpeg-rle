@@ -137,6 +137,9 @@ jobs:
 
           # MacOS arm64
           - os: macos-latest
+            python: 38
+            platform_id: macosx_arm64
+          - os: macos-latest
             python: 39
             platform_id: macosx_arm64
           - os: macos-latest
