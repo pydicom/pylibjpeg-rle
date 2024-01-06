@@ -101,6 +101,23 @@ jobs:
             platform_id: manylinux_x86_64
             manylinux_image: manylinux2014
 
+          # Linux aarch64
+          - os: ubuntu-latest
+            python: 38
+            platform_id: manylinux_aarch64
+          - os: ubuntu-latest
+            python: 39
+            platform_id: manylinux_aarch64
+          - os: ubuntu-latest
+            python: 310
+            platform_id: manylinux_aarch64
+          - os: ubuntu-latest
+            python: 311
+            platform_id: manylinux_aarch64
+          - os: ubuntu-latest
+            python: 312
+            platform_id: manylinux_aarch64
+
           # MacOS x86_64
           - os: macos-latest
             python: 38
@@ -137,9 +154,9 @@ jobs:
       with:
         submodules: true
 
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
+    - name: Install Rust (stable)
+      run:
+        curl https://sh.rustup.rs -sSf | sh -s -- -y
 
     - uses: actions/setup-python@v5
       name: Install Python
