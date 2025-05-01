@@ -2,8 +2,6 @@
 use std::convert::TryFrom;
 use std::error::Error;
 
-// use itertools::Itertools;
-
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use pyo3::types::{PyBytes, PyByteArray};
