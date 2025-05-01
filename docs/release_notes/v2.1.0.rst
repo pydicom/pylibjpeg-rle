@@ -6,7 +6,7 @@
 Changes
 .......
 
-* Updated to PyO3 v0.25 and Rust v2024
+* Updated to PyO3 v0.24 and Rust v2024
 * Dropped support for Python 3.8 and added it for support for Python 3.13
 * Requires NumPy > v2.0
 
