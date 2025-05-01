@@ -47,12 +47,6 @@ jobs:
         include:
           # Windows 32 bit
           - os: windows-latest
-            python: 38
-            platform_id: win32
-          - os: windows-latest
-            python: 39
-            platform_id: win32
-          - os: windows-latest
             python: 310
             platform_id: win32
           - os: windows-latest
@@ -60,16 +54,13 @@ jobs:
             platform_id: win32
           - os: windows-latest
             python: 312
+            platform_id: win32
+          - os: windows-latest
+            python: 313
             platform_id: win32
 
           # Windows 64 bit
           - os: windows-latest
-            python: 38
-            platform_id: win_amd64
-          - os: windows-latest
-            python: 39
-            platform_id: win_amd64
-          - os: windows-latest
             python: 310
             platform_id: win_amd64
           - os: windows-latest
@@ -77,18 +68,13 @@ jobs:
             platform_id: win_amd64
           - os: windows-latest
             python: 312
+            platform_id: win_amd64
+          - os: windows-latest
+            python: 313
             platform_id: win_amd64
 
           # Linux 64 bit manylinux2014
           - os: ubuntu-latest
-            python: 38
-            platform_id: manylinux_x86_64
-            manylinux_image: manylinux2014
-          - os: ubuntu-latest
-            python: 39
-            platform_id: manylinux_x86_64
-            manylinux_image: manylinux2014
-          - os: ubuntu-latest
             python: 310
             platform_id: manylinux_x86_64
             manylinux_image: manylinux2014
@@ -98,17 +84,15 @@ jobs:
             manylinux_image: manylinux2014
           - os: ubuntu-latest
             python: 312
+            platform_id: manylinux_x86_64
+            manylinux_image: manylinux2014
+          - os: ubuntu-latest
+            python: 313
             platform_id: manylinux_x86_64
             manylinux_image: manylinux2014
 
           # Linux aarch64
           - os: ubuntu-latest
-            python: 38
-            platform_id: manylinux_aarch64
-          - os: ubuntu-latest
-            python: 39
-            platform_id: manylinux_aarch64
-          - os: ubuntu-latest
             python: 310
             platform_id: manylinux_aarch64
           - os: ubuntu-latest
@@ -116,16 +100,13 @@ jobs:
             platform_id: manylinux_aarch64
           - os: ubuntu-latest
             python: 312
+            platform_id: manylinux_aarch64
+          - os: ubuntu-latest
+            python: 313
             platform_id: manylinux_aarch64
 
           # MacOS x86_64
           - os: macos-latest
-            python: 38
-            platform_id: macosx_x86_64
-          - os: macos-latest
-            python: 39
-            platform_id: macosx_x86_64
-          - os: macos-latest
             python: 310
             platform_id: macosx_x86_64
           - os: macos-latest
@@ -133,16 +114,13 @@ jobs:
             platform_id: macosx_x86_64
           - os: macos-latest
             python: 312
+            platform_id: macosx_x86_64
+          - os: macos-latest
+            python: 313
             platform_id: macosx_x86_64
 
           # MacOS arm64
           - os: macos-latest
-            python: 38
-            platform_id: macosx_arm64
-          - os: macos-latest
-            python: 39
-            platform_id: macosx_arm64
-          - os: macos-latest
             python: 310
             platform_id: macosx_arm64
           - os: macos-latest
@@ -150,6 +128,9 @@ jobs:
             platform_id: macosx_arm64
           - os: macos-latest
             python: 312
+            platform_id: macosx_arm64
+          - os: macos-latest
+            python: 313
             platform_id: macosx_arm64
 
     steps:
@@ -170,7 +151,7 @@ jobs:
     - uses: actions/setup-python@v5
       name: Install Python
       with:
-        python-version: '3.9'
+        python-version: '3.10'
 
     - name: Install cibuildwheel
       run: |
@@ -206,7 +187,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        python-version: ['3.10', '3.11', '3.12', '3.13']
 
     steps:
     - name: Install Rust (stable)

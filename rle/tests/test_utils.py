@@ -5,14 +5,16 @@ import pytest
 
 try:
     from pydicom import dcmread
-    from pydicom.encaps import generate_pixel_data_frame
-    from pydicom.pixel_data_handlers.rle_handler import _rle_decode_frame
-    from pydicom.pixel_data_handlers.util import pixel_dtype, reshape_pixel_array
+    from pydicom.pixels.utils import pixel_dtype
     from pydicom.uid import RLELossless
 
     HAVE_PYDICOM = True
 except ImportError:
     HAVE_PYDICOM = False
+try:
+    from pydicom.pixels.decoders.native import _rle_decode_frame
+except ImportError:
+    from pydicom.pixels.decoders.rle import _rle_decode_frame
 
 from rle.data import get_indexed_datasets
 from rle.utils import encode_pixel_data, encode_array, pixel_data, pixel_array

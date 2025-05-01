@@ -5,7 +5,7 @@ import numpy as np
 
 try:
     from pydicom import dcmread
-    from pydicom.encaps import generate_pixel_data_frame
+    from pydicom.encaps import generate_fragmented_frames
     from pydicom.uid import RLELossless
 
     HAVE_PYDICOM = True
@@ -33,7 +33,7 @@ class TestDecodePixelData:
         assert 800 == ds.Columns
         assert 1 == getattr(ds, "NumberOfFrames", 1)
 
-        frame = next(generate_pixel_data_frame(ds.PixelData))
+        frame = next(generate_fragmented_frames(ds.PixelData))
         msg = r"Either `ds` or `\*\*kwargs` must be used"
         with pytest.raises(ValueError, match=msg):
             decode_pixel_data(frame)
@@ -49,7 +49,7 @@ class TestDecodePixelData:
         assert 800 == ds.Columns
         assert 1 == getattr(ds, "NumberOfFrames", 1)
 
-        frame = next(generate_pixel_data_frame(ds.PixelData))
+        frame = b"".join(next(generate_fragmented_frames(ds.PixelData)))
         arr = decode_pixel_data(frame, ds)
         assert (480000,) == arr.shape
         assert arr.flags.writeable
@@ -66,7 +66,7 @@ class TestDecodePixelData:
         assert 100 == ds.Columns
         assert 1 == getattr(ds, "NumberOfFrames", 1)
 
-        frame = next(generate_pixel_data_frame(ds.PixelData))
+        frame = b"".join(next(generate_fragmented_frames(ds.PixelData)))
         arr = decode_pixel_data(frame, ds)
         assert (120000,) == arr.shape
         assert arr.flags.writeable
@@ -81,7 +81,7 @@ class TestDecodePixelData:
             "rows": ds.Rows,
             "columns": ds.Columns,
         }
-        frame = next(generate_pixel_data_frame(ds.PixelData))
+        frame = b"".join(next(generate_fragmented_frames(ds.PixelData)))
         buffer = decode_pixel_data(frame, version=2, **opts)
         assert isinstance(buffer, bytearray)
         arr = np.frombuffer(buffer, dtype="u1")
@@ -97,7 +97,7 @@ class TestDecodePixelData:
             "rows": ds.Rows,
             # "columns": ds.Columns,
         }
-        frame = next(generate_pixel_data_frame(ds.PixelData))
+        frame = next(generate_fragmented_frames(ds.PixelData))
         msg = "Missing expected keyword arguments: columns"
         with pytest.raises(AttributeError, match=msg):
             buffer = decode_pixel_data(frame, version=2, **opts)

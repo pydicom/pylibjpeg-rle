@@ -7,20 +7,19 @@ import sys
 
 try:
     from pydicom import dcmread
-    from pydicom.data import get_testdata_file
     from pydicom.dataset import Dataset, FileMetaDataset
-    from pydicom.encaps import generate_pixel_data_frame, defragment_data
-    from pydicom.pixel_data_handlers.rle_handler import (
-        _parse_rle_header,
-        _rle_decode_frame,
-        _rle_decode_segment,
-    )
-    from pydicom.pixel_data_handlers.util import pixel_dtype, reshape_pixel_array
+    from pydicom.encaps import generate_frames
+    from pydicom.pixels.utils import pixel_dtype, reshape_pixel_array
     from pydicom.uid import RLELossless
 
     HAVE_PYDICOM = True
 except ImportError:
     HAVE_PYDICOM = False
+
+try:
+    from pydicom.pixels.decoders.native import _rle_decode_frame
+except ImportError:
+    from pydicom.pixels.decoders.rle import _rle_decode_frame
 
 
 from rle.data import get_indexed_datasets
@@ -74,14 +73,17 @@ REFERENCE_ENCODE_ROW = [
     pytest.param([0, 1] * 64 * 5, (b"\x7f" + b"\x00\x01" * 64) * 5, id="16"),
     # Combination run tests
     # 2 literal, 1(min) literal
-    # or 1 (min) literal, 1 (min) replicate b'\x00\x00\xff\x01'
-    pytest.param([0, 1, 1], b"\x01\x00\x01\x00\x01", id="17"),
+    # pytest.param([0, 1, 1], b"\x01\x00\x01\x00\x01", id="17"),
+    # or 1 (min) literal, 1 (min) replicate b'\x00\x00\xff\x01' <-- this
+    pytest.param([0, 1, 1], b"\x00\x00\xff\x01", id="17"),
     # 2 literal, 127 replicate
-    # or 1 (min) literal, 128 (max) replicate
-    pytest.param([0] + [1] * 128, b"\x01\x00\x01\x82\x01", id="18"),
+    # pytest.param([0] + [1] * 128, b"\x01\x00\x01\x82\x01", id="18"),
+    # or 1 (min) literal, 128 (max) replicate  <-- this
+    pytest.param([0] + [1] * 128, b"\x00\x00\x81\x01", id="18"),
     # 2 literal, 128 (max) replicate
-    # or 1 (min) literal, 128 (max) replicate, 1 (min) literal
-    pytest.param([0] + [1] * 129, b"\x01\x00\x01\x81\x01", id="18b"),
+    # pytest.param([0] + [1] * 129, b"\x01\x00\x01\x81\x01", id="18b"),
+    # or 1 (min) literal, 128 (max) replicate, 1 (min) literal  <-- this
+    pytest.param([0] + [1] * 129, b"\x00\x00\x81\x01\x00\x01", id="18b"),
     # 128 (max) literal, 2 (min) replicate
     # 128 (max literal)
     pytest.param(
@@ -118,7 +120,7 @@ class TestEncodeSegment:
     def test_one_row(self):
         """Test encoding data that contains only a single row."""
         ds = INDEX_RLE["OBXXXX1A_rle.dcm"]["ds"]
-        pixel_data = defragment_data(ds.PixelData)
+        pixel_data = b"".join(generate_frames(ds.PixelData))
         decoded = decode_segment(pixel_data[64:])
         assert ds.Rows * ds.Columns == len(decoded)
         arr = np.frombuffer(decoded, "uint8").reshape(ds.Rows, ds.Columns)
@@ -136,7 +138,7 @@ class TestEncodeSegment:
     def test_cycle(self):
         """Test the decoded data remains the same after encoding/decoding."""
         ds = INDEX_RLE["OBXXXX1A_rle.dcm"]["ds"]
-        pixel_data = defragment_data(ds.PixelData)
+        pixel_data = b"".join(generate_frames(ds.PixelData))
         decoded = decode_segment(pixel_data[64:])
         assert ds.Rows * ds.Columns == len(decoded)
         arr = np.frombuffer(decoded, "uint8").reshape(ds.Rows, ds.Columns)

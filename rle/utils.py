@@ -264,8 +264,8 @@ def generate_frames(ds: "Dataset", reshape: bool = True) -> Iterator[np.ndarray]
     """
     import numpy as np
 
-    from pydicom.encaps import generate_pixel_data_frame
-    from pydicom.pixel_data_handlers.util import pixel_dtype
+    from pydicom.encaps import generate_frames
+    from pydicom.pixels.utils import pixel_dtype
     from pydicom.uid import RLELossless
 
     if ds.file_meta.TransferSyntaxUID != RLELossless:
@@ -295,7 +295,7 @@ def generate_frames(ds: "Dataset", reshape: bool = True) -> Iterator[np.ndarray]
     bpp = ds.BitsAllocated
 
     dtype = pixel_dtype(ds)
-    for frame in generate_pixel_data_frame(ds.PixelData, nr_frames):
+    for frame in generate_frames(ds.PixelData, number_of_frames=nr_frames):
         arr = np.frombuffer(decode_frame(frame, r * c, bpp, "<"), dtype=dtype)
 
         if not reshape:
@@ -328,7 +328,7 @@ def pixel_array(ds: "Dataset") -> "np.ndarray":
         components), (frames, rows, columns), or (frames, rows, columns,
         components) depending on the dataset.
     """
-    from pydicom.pixel_data_handlers.util import (
+    from pydicom.pixels.utils import (
         get_expected_length,
         reshape_pixel_array,
         pixel_dtype,
