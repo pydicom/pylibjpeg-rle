@@ -3,14 +3,8 @@ import timeit
 
 from pydicom import dcmread
 from pydicom.data import get_testdata_file
-from pydicom.encaps import generate_pixel_data_frame
-from pydicom.pixel_data_handlers.rle_handler import (
-    get_pixeldata,
-    _rle_decode_frame,
-    _rle_encode_row,
-    rle_encode_frame,
-)
-from pydicom.pixel_data_handlers.util import reshape_pixel_array
+from pydicom.pixels.encoders.native import _rle_encode_row, rle_encode_frame
+from pydicom.pixels.utils import reshape_pixel_array
 from pydicom.uid import RLELossless
 
 from ljdata import get_indexed_datasets

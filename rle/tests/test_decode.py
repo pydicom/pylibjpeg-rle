@@ -8,13 +8,6 @@ import pytest
 
 try:
     from pydicom import dcmread
-    from pydicom.encaps import generate_pixel_data_frame
-    from pydicom.pixel_data_handlers.rle_handler import (
-        _parse_rle_header,
-        _rle_decode_frame,
-        _rle_decode_segment,
-    )
-    from pydicom.pixel_data_handlers.util import pixel_dtype, reshape_pixel_array
     from pydicom.uid import RLELossless
 
     HAVE_PYDICOM = True

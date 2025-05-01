@@ -2,6 +2,8 @@
 use std::convert::TryFrom;
 use std::error::Error;
 
+// use itertools::Itertools;
+
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use pyo3::types::{PyBytes, PyByteArray};
@@ -10,14 +12,14 @@ use pyo3::exceptions::{PyValueError};
 
 // Python rle module members
 #[pymodule]
-fn rle(_: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(parse_header, m)?).unwrap();
-    m.add_function(wrap_pyfunction!(decode_segment, m)?).unwrap();
-    m.add_function(wrap_pyfunction!(decode_frame, m)?).unwrap();
+fn rle(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(parse_header, m)?); //.unwrap();
+    m.add_function(wrap_pyfunction!(decode_segment, m)?); //.unwrap();
+    m.add_function(wrap_pyfunction!(decode_frame, m)?); //.unwrap();
 
-    m.add_function(wrap_pyfunction!(encode_row, m)?).unwrap();
-    m.add_function(wrap_pyfunction!(encode_segment, m)?).unwrap();
-    m.add_function(wrap_pyfunction!(encode_frame, m)?).unwrap();
+    m.add_function(wrap_pyfunction!(encode_row, m)?); //.unwrap();
+    m.add_function(wrap_pyfunction!(encode_segment, m)?); //.unwrap();
+    m.add_function(wrap_pyfunction!(encode_frame, m)?); //.unwrap();
 
     Ok(())
 }
@@ -81,9 +83,9 @@ fn _parse_header(src: &[u8; 64]) -> [u32; 15] {
 
 
 #[pyfunction]
-fn decode_frame<'a>(
-    src: &[u8], nr_pixels: u32, bpp: u8, byteorder: char, py: Python<'a>
-) -> PyResult<&'a PyByteArray> {
+fn decode_frame<'py>(
+    src: &[u8], nr_pixels: u32, bpp: u8, byteorder: char, py: Python<'py>
+) -> PyResult<Bound<'py, PyByteArray>> {
     /* Return the decoded frame.
 
     Parameters
@@ -386,7 +388,7 @@ fn _decode_segment_into_frame(
 
 
 #[pyfunction]
-fn decode_segment<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
+fn decode_segment<'py>(src: &[u8], py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
     /* Return a decoded RLE segment as bytes.
 
     Parameters
@@ -461,9 +463,9 @@ fn _decode_segment(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> 
 // ------------
 
 #[pyfunction]
-fn encode_frame<'a>(
-    src: &[u8], rows: u16, cols: u16, spp: u8, bpp: u8, byteorder: char, py: Python<'a>
-) -> PyResult<&'a PyBytes> {
+fn encode_frame<'py>(
+    src: &[u8], rows: u16, cols: u16, spp: u8, bpp: u8, byteorder: char, py: Python<'py>
+) -> PyResult<Bound<'py, PyBytes>> {
     /* Return RLE encoded `src` as bytes.
 
     Parameters
@@ -620,35 +622,10 @@ fn _encode_frame(
 }
 
 
-fn _encode_segment_from_vector(
-    src: Vec<u8>, dst: &mut Vec<u8>, cols: u16
-) -> Result<(), Box<dyn Error>> {
-    /* RLE encode a segment.
-
-    Parameters
-    ----------
-    src
-        The data to be encoded.
-    dst
-        The destination for the encoded data.
-    cols
-        The length of each row in the `src`.
-    */
-    let row_len: usize = usize::try_from(cols).unwrap();
-    for row_idx in 0..(src.len() / row_len) {
-        let offset = row_idx * row_len;
-        _encode_row(&src[offset..offset + row_len], dst)?;
-    }
-
-    // Each segment must be even length or padded to even length with zero
-    if dst.len() % 2 != 0 { dst.push(0); }
-
-    Ok(())
-}
-
-
 #[pyfunction]
-fn encode_segment<'a>(src: &[u8], cols: u16, py: Python<'a>) -> PyResult<&'a PyBytes> {
+fn encode_segment<'py>(
+    src: &[u8], cols: u16, py: Python<'py>
+) -> PyResult<Bound<'py, PyBytes>> {
     /* Return an RLE encoded segment as bytes.
 
     Parameters
@@ -710,8 +687,35 @@ fn _encode_segment_from_array(
 }
 
 
+fn _encode_segment_from_vector(
+    src: Vec<u8>, dst: &mut Vec<u8>, cols: u16
+) -> Result<(), Box<dyn Error>> {
+    /* RLE encode a segment.
+
+    Parameters
+    ----------
+    src
+        The data to be encoded.
+    dst
+        The destination for the encoded data.
+    cols
+        The length of each row in the `src`.
+    */
+    let row_len: usize = usize::try_from(cols).unwrap();
+    for row_idx in 0..(src.len() / row_len) {
+        let offset = row_idx * row_len;
+        _encode_row(&src[offset..offset + row_len], dst)?;
+    }
+
+    // Each segment must be even length or padded to even length with zero
+    if dst.len() % 2 != 0 { dst.push(0); }
+
+    Ok(())
+}
+
+
 #[pyfunction]
-fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
+fn encode_row<'py>(src: &[u8], py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
     /* Return `src` as RLE encoded bytes.
 
     Parameters
@@ -732,7 +736,6 @@ fn encode_row<'a>(src: &[u8], py: Python<'a>) -> PyResult<&'a PyBytes> {
 }
 
 
-#[allow(overflowing_literals)]
 fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     /* RLE encode `src` into `dst`
 
@@ -756,101 +759,58 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     match src.len() {
         0 => { return Ok(()) },
         1 => {
-            dst.push(0);  // literal run
+            dst.push(0u8);  // literal run
             dst.push(src[0]);
             return Ok(())
         },
         _ => {}
     }
 
-    // Maximum length of a literal/replicate run
-    let max_run_length: u8 = 128;
-    let src_length = src.len();
+    let mut literal: Vec<u8> = Vec::new();
 
-    // `replicate` and `literal` are the length of the current run
-    let mut literal: u8 = 0;
-    let mut replicate: u8 = 0;
-
-    let mut previous: u8 = src[0];
-    let mut current: u8 = src[1];
-    let mut ii: usize = 1;
-
-    // Account for the first item
-    if current == previous { replicate = 1; }
-    else { literal = 1; }
-
-    loop {
-        current = src[ii];
-
-        // Run type switching/control
-        if current == previous {
-            if literal == 1 {
-                // Switch over to a replicate run
-                literal = 0;
-                replicate = 1;
-            } else if literal > 1 {
-                // Write out literal run and reset
-                // `literal` must be at least 1 or we undeflow
-                dst.push(literal - 1u8);
-                dst.extend(&src[ii - usize::from(literal)..ii]);
-                literal = 0;
-             }
-            replicate += 1;
-
+    // Chunk the source into groups of identical values
+    for group in src.chunk_by(|a, b| a == b) {
+        if group.len() == 1 {
+            // Only a single value in the group -> add it to the saved literal values
+            literal.extend(group);
         } else {
-            if replicate == 1 {
-                // Switch over to a literal run
-                literal = 1;
-                replicate = 0;
-            } else if replicate > 1 {
-                // Write out replicate run and reset
-                // `replicate` must be at least 2 to avoid overflow
-                dst.push(257u8.wrapping_sub(replicate));
-                // Note use of `previous` item
-                dst.push(previous);
-                replicate = 0;
-             }
-            literal += 1;
+            // Multiple values in the group so one or more replicate runs are required
+
+            //  If `literal` is not empty then add N literal runs to the output first
+            if !literal.is_empty() {
+                for chunk in literal.chunks(128) {
+                    // 1 >= chunk.len() >= 128: usize -> u8
+                    dst.push((chunk.len() - 1).try_into().unwrap());
+                    dst.extend(chunk);
+                }
+
+                // Reset the saved literal run values
+                literal.clear();
+            }
+
+            // Replicate run(s)
+            for chunk in group.chunks(128) {
+                if chunk.len() > 1 {
+                    // Replicate runs if the chunks have more than 1 value
+                    // 1 >= chunk.len() >= 128: usize -> u8
+                    dst.push((257 - chunk.len()).try_into().unwrap());
+                    dst.push(chunk[0]);
+                } else {
+                    // If the final chunk is only 1 value long do a literal run instead
+                    dst.push(0u8);
+                    dst.push(chunk[0]);
+                }
+            }
         }
-
-        // If the run length is maxed, write out and reset
-        if replicate == max_run_length {  // Should be more frequent
-            // Write out replicate run and reset
-            dst.push(129);
-            dst.push(previous);
-            replicate = 0;
-        } else if literal == max_run_length {
-            // Write out literal run and reset
-            dst.push(127);
-            // The indexing is different here because ii is the `current`
-            //   item, not previous
-            dst.extend(&src[ii + 1 - usize::from(literal)..ii + 1]);
-            literal = 0;
-        } // 128 is noop!
-
-        previous = current;
-        ii += 1;
-
-        if ii == src_length { break; }
     }
 
-    // Handle cases where the last byte is continuation of a replicate run
-    //  such as when 129 0x00 bytes -> replicate(128) + literal(1)
-    if replicate == 1 {
-        replicate = 0;
-        literal = 1;
-    }
-
-    if replicate > 1 {
-        // Write out and return
-        // `replicate` must be at least 2 or we overflow
-        dst.push(257u8.wrapping_sub(replicate));
-        dst.push(current);
-    } else if literal > 0 {
-        // Write out and return
-        // `literal` must be at least 1 or we undeflow
-        dst.push(literal - 1u8);
-        dst.extend(&src[src_length - usize::from(literal)..]);
+    // Final literal run(s) if literal isn't followed by a replicate run
+    if !literal.is_empty() {
+        for chunk in literal.chunks(128) {
+            // 1 >= chunk.len() >= 128: usize -> u8
+            dst.push((chunk.len() - 1).try_into().unwrap());
+            dst.extend(chunk);
+        }
     }
 
     Ok(())
