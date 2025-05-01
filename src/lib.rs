@@ -11,13 +11,13 @@ use pyo3::exceptions::{PyValueError};
 // Python rle module members
 #[pymodule]
 fn rle(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(parse_header, m)?); //.unwrap();
-    m.add_function(wrap_pyfunction!(decode_segment, m)?); //.unwrap();
-    m.add_function(wrap_pyfunction!(decode_frame, m)?); //.unwrap();
+    m.add_function(wrap_pyfunction!(parse_header, m)?);
+    m.add_function(wrap_pyfunction!(decode_segment, m)?);
+    m.add_function(wrap_pyfunction!(decode_frame, m)?);
 
-    m.add_function(wrap_pyfunction!(encode_row, m)?); //.unwrap();
-    m.add_function(wrap_pyfunction!(encode_segment, m)?); //.unwrap();
-    m.add_function(wrap_pyfunction!(encode_frame, m)?); //.unwrap();
+    m.add_function(wrap_pyfunction!(encode_row, m)?);
+    m.add_function(wrap_pyfunction!(encode_segment, m)?);
+    m.add_function(wrap_pyfunction!(encode_frame, m)?);
 
     Ok(())
 }
@@ -757,7 +757,7 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
     match src.len() {
         0 => { return Ok(()) },
         1 => {
-            dst.push(0u8);  // literal run
+            dst.push(0);  // literal run
             dst.push(src[0]);
             return Ok(())
         },
@@ -795,7 +795,7 @@ fn _encode_row(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> {
                     dst.push(chunk[0]);
                 } else {
                     // If the final chunk is only 1 value long do a literal run instead
-                    dst.push(0u8);
+                    dst.push(0);
                     dst.push(chunk[0]);
                 }
             }
