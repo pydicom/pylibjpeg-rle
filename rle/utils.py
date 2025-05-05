@@ -106,6 +106,10 @@ def encode_array(
 
     .. versionadded:: 1.1
 
+    .. versionchanged:: 2.2
+
+        Added support for 'bits_allocated' 1.
+
     Parameters
     ----------
     arr : numpy.ndarray
@@ -124,7 +128,7 @@ def encode_array(
         * ``samples_per_px': int`` the number of samples per pixel, either
           1 for monochrome or 3 for RGB or similar data.
         * ``'bits_per_px': int`` the number of bits needed to contain each
-          pixel, either 8, 16, 32 or 64.
+          pixel, either 1, 8, 16, 32 or 64.
         * ``'nr_frames': int`` the number of frames in `arr`, required if
           more than one frame is present.
 
@@ -169,6 +173,10 @@ def encode_pixel_data(
         to 15 in order to meet the requirements of the *RLE Lossless*
         transfer syntax.
 
+    .. versionchanged:: 2.2
+
+        Added support for 'bits_allocated' 1.
+
     Parameters
     ----------
     src : bytes
@@ -189,7 +197,7 @@ def encode_pixel_data(
         * ``samples_per_pixel': int`` the number of samples per pixel, either
           1 for monochrome or 3 for RGB or similar data.
         * ``'bits_allocated': int`` the number of bits needed to contain each
-          pixel, either 8, 16, 32 or 64.
+          pixel, either 1, 8, 16, 32 or 64.
 
     Returns
     -------
@@ -212,9 +220,9 @@ def encode_pixel_data(
         msg = "(0028,0002) 'Samples per Pixel'" if ds else "'samples_per_pixel'"
         raise ValueError(f"{msg} must be 1 or 3")
 
-    if bpp not in [8, 16, 32, 64]:
+    if bpp not in [1, 8, 16, 32, 64]:
         msg = "(0028,0100) 'Bits Allocated'" if ds else "'bits_allocated'"
-        raise ValueError(f"{msg} must be 8, 16, 32 or 64")
+        raise ValueError(f"{msg} must be 1, 8, 16, 32 or 64")
 
     if bpp / 8 * spp > 15:
         raise ValueError(
@@ -235,6 +243,7 @@ def encode_pixel_data(
     return cast(bytes, encode_frame(src, r, c, spp, bpp, byteorder))
 
 
+# TODO: unpack Bits Stored 1
 def generate_frames(ds: "Dataset", reshape: bool = True) -> Iterator[np.ndarray]:
     """Yield a *Pixel Data* frame from `ds` as an :class:`~numpy.ndarray`.
 
@@ -310,6 +319,7 @@ def generate_frames(ds: "Dataset", reshape: bool = True) -> Iterator[np.ndarray]
             yield arr.transpose(1, 2, 0)
 
 
+# TODO: unpack Bits Stored 1
 def pixel_array(ds: "Dataset") -> "np.ndarray":
     """Return the entire *Pixel Data* as an :class:`~numpy.ndarray`.
 

@@ -32,7 +32,7 @@ keywords = ["dicom pydicom python rle pylibjpeg rust"]
 license = "MIT"
 name = "pylibjpeg-rle"
 readme = "README.md"
-version = "2.1.0"
+version = "2.2.0.dev0"
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=2.0",

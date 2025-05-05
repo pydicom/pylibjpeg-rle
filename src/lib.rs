@@ -94,7 +94,7 @@ fn decode_frame<'py>(
         The total number of pixels in the frame (rows x columns),
         maximum (2^32 - 1).
     bpp : int
-        The number of bits per pixel, supported values 8, 16, 32, 64.
+        The number of bits per pixel, supported values 1, 8, 16, 32, 64.
     byteorder : str
         The byte order of the returned data, '<' for little endian, '>' for
         big endian.
@@ -123,7 +123,7 @@ fn _decode_frame(
     nr_pixels
         The total number of pixels in the frame (rows x columns).
     bpp
-        The number of bits per pixel, should be a multiple of 8 and no larger
+        The number of bits per pixel, should be 1 or a multiple of 8 and no larger
         than 64.
     byteorder
         The byte order of the decoded data, '<' for little endian, '>' for
@@ -133,7 +133,7 @@ fn _decode_frame(
     // Pre-define our errors for neatness
     let err_invalid_bits_allocated = Err(
         String::from(
-            "The (0028,0100) 'Bits Allocated' value must be 8, 16, 32 or 64"
+            "The (0028,0100) 'Bits Allocated' value must be 1, 8, 16, 32 or 64"
         ).into()
     );
     let err_invalid_offset = Err(
@@ -154,24 +154,31 @@ fn _decode_frame(
         String::from("'byteorder' must be '>' or '<'").into()
     );
 
-    // Ensure we have a valid bits/px value
+    let mut is_bit_packed: bool = false;
+
+    // Ensure we have a valid bits/px value: 1 or a multiple of 8
     match bpp {
         0 => return err_invalid_bits_allocated,
+        1 => { is_bit_packed = true; },
         _ => match bpp % 8 {
-            0 => {},
+            0 => { },
             _ => return err_invalid_bits_allocated
         }
     }
 
-    // Ensure `bytes_per_pixel` is in [1, 2, 4, 8]
-    let bytes_per_pixel: u8 = bpp / 8;
-    match bytes_per_pixel {
-        1 => {},
-        2 | 4 | 8 => match byteorder {
-            '>' | '<' => {},
-            _ => return err_invalid_byteorder
-        },
-        _ => return err_invalid_bits_allocated
+    // For non-bit-packed data ensure `bytes_per_pixel` is in [1, 2, 4, 8]
+    if !is_bit_packed {
+        let bytes_per_pixel: u8 = bpp / 8;
+        match bytes_per_pixel {
+            1 => {},
+            2 | 4 | 8 => match byteorder {
+                '>' | '<' => {},
+                _ => return err_invalid_byteorder
+            },
+            _ => return err_invalid_bits_allocated
+        }
+    } else {
+
     }
 
     // Parse the RLE header and check results
@@ -213,14 +220,6 @@ fn _decode_frame(
         _ => return err_invalid_nr_samples
     }
 
-    // Watch for overflow here; u32 * u32 -> u64
-    let expected_length = usize::try_from(
-        nr_pixels * u32::from(bytes_per_pixel * spp)
-    ).unwrap();
-
-    // Pre-allocate a vector for the decoded frame
-    let mut frame = vec![0u8; expected_length];
-
     /*
     Example
     -------
@@ -238,44 +237,198 @@ fn _decode_frame(
       MSB LSB MSB LSB ... MSB LSB | MSB LSB MSB LSB ... MSB LSB | ...
     */
 
+    /*
+    Bit-packed data
+    ---------------
+
+    For bit-packed data (i.e. a *Bits Allocated* of 1), we decode the RLE encoding but
+    leave the bit-packing in place. This means the length of each decoded segment is not
+    equal to the number of pixels but instead the number of pixels / 8, rounded up to the
+    nearest whole integer with the difference being accounted for by padding 0b0 bits.
+
+    Each decoded segment must have these padding bits removed and the final frame should be
+    the concatenated unpadded segments. Fortunately for bit-packed data there can be at
+    most 3 segments (with a *Samples per Pixel* of 3).
+
+    Might be a good idea to use bool arrays instead of u8 and implicitly unpack to avoid
+    annoyances with multi-segment padding, then convert to u8 at the end.
+
+    bitvec perhaps?
+    */
+
     // Decode each segment and place it into the vector
     // ------------------------------------------------
     let pps = usize::try_from(nr_pixels).unwrap();
     // Concatenate sample planes into a frame
-    for sample in 0..spp {  // 0 or (0, 1, 2)
-        // Sample offset
-        let so = usize::from(sample * bytes_per_pixel) * pps;
+    if !is_bit_packed {
+        // Watch for overflow here; u32 * u32 -> u64
+        // Actual values are (u16 * u16) * u8
+        let expected_length = usize::try_from(
+            nr_pixels * u32::from(bytes_per_pixel * spp)
+        ).unwrap();
 
-        // Interleave the segments into a sample plane
-        for byte_offset in 0..bytes_per_pixel {  // 0, [1, 2, 3, ..., 7]
-            // idx should be in range [0, 15]
-            let idx: usize;
-            if byteorder == '>' { // big-endian
-                // e.g. 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
-                idx = usize::from(sample * bytes_per_pixel + byte_offset);
-            } else { // little-endian
-                // e.g. 3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8
-                idx = usize::from(
-                    bytes_per_pixel - byte_offset + bytes_per_pixel * sample
-                ) - 1;
+        // Pre-allocate a vector for the decoded frame
+        let mut frame = vec![0u8; expected_length];
+
+        for sample in 0..spp {  // 0 or (0, 1, 2)
+            // Sample offset
+            let so = usize::from(sample * bytes_per_pixel) * pps;
+
+            // Interleave the segments into a sample plane
+            for byte_offset in 0..bytes_per_pixel {  // 0, [1, 2, 3, ..., 7]
+                // idx should be in range [0, 15]
+                let idx: usize;
+                if byteorder == '>' { // big-endian
+                    // e.g. 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+                    idx = usize::from(sample * bytes_per_pixel + byte_offset);
+                } else { // little-endian
+                    // e.g. 3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8
+                    idx = usize::from(
+                        bytes_per_pixel - byte_offset + bytes_per_pixel * sample
+                    ) - 1;
+                }
+
+                // offsets[idx] is u32 -> usize not guaranteed
+                let start = usize::try_from(offsets[idx]).unwrap();
+                let end = usize::try_from(offsets[idx + 1]).unwrap();
+
+                // Decode the segment into the frame
+                let len = _decode_segment_into_frame(
+                    <&[u8]>::try_from(&src[start..end]).unwrap(),
+                    &mut frame,
+                    usize::from(bytes_per_pixel),
+                    usize::from(byte_offset) + so
+                )?;
+                if len != pps { return err_segment_length }
             }
-
-            // offsets[idx] is u32 -> usize not guaranteed
-            let start = usize::try_from(offsets[idx]).unwrap();
-            let end = usize::try_from(offsets[idx + 1]).unwrap();
-
-            // Decode the segment into the frame
-            let len = _decode_segment_into_frame(
-                <&[u8]>::try_from(&src[start..end]).unwrap(),
-                &mut frame,
-                usize::from(bytes_per_pixel),
-                usize::from(byte_offset) + so
-            )?;
-            if len != pps { return err_segment_length }
         }
+
+        return Ok(frame);
+
+    // Bit-packed data
+    // u8 * u32
+    // FIXME
+    let bits_per_segment = usize::try_from(8 * nr_pixels).unwrap();  // wrong!
+    // Each segment is padded to an even length, so segment boundaries should be
+    // whole integers
+
+    // The number of whole bytes per segment, including any padding
+    let mut padding_bytes = 0;
+    match bits_per_segment % 16 {
+        0 => {},
+        1..=8 => { padding_bytes = 2 },
+        9..=15 => { padding_bytes = 1 },
+    }
+    let bytes_per_segment = bits_per_segment / 8 + padding_bytes;
+
+    let mut frame: Vec<u8> = Vec::new();
+    for sample in 0..spp {  // 0..0 or 0..2
+        // Start and end indices of the segment
+        let start = usize::try_from(offsets[idx]).unwrap();
+        let end = usize::try_from(offsets[idx + 1]).unwrap();
+
+        // Decode the segment into the frame
+        let segment = _decode_segment_into_frame(
+            <&[u8]>::try_from(&src[start..end]).unwrap(),
+            bytes_per_segment,
+        )?;
+        if segment.len() != bytes_per_segment { return err_segment_length }
+
+        if spp == 0 { return Ok(segment) }
+
+        if !is_padded {
+            frame.extend(segment);
+        } else {
+            // hmm
+        }
+
     }
 
+    // Concatenate the segments together, bit shifting to ensure any padding is removed
+
     Ok(frame)
+}
+
+
+/*
+fn _shift_bit_packed_segment(
+    prefix: u8, src: Vec<u8>, shift: u8
+) -> Vec<u8> {
+    assert!(0 < shift < 8);
+
+    let mut dst = Vec::new();
+    // shift the prefix to the right by the required shift
+    dst.push(prefix >> (8 - shift))
+
+    for idx in 0..src.len() {
+        dst[idx] = src[idx] << shift;
+        dst[idx] |= src[idx + 1] >> (8 - shift);
+    }
+
+    dst
+}
+*/
+
+
+fn _decode_bit_packed_segment(
+    src: &[u8], segment_length: usize
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    //
+    let eod = src.len() - 1;
+    let mut pos = 0;
+    let mut header_byte: usize;
+    let mut dst: Vec<u8> = Vec::new();
+
+    let err_eod = Err(
+        String::from(
+            "The end of the data was reached before the segment was \
+            completely decoded"
+        ).into()
+    );
+
+    loop {
+        // `header_byte` is equivalent to N in the DICOM Standard
+        // usize is at least u8
+        header_byte = usize::from(src[pos]);
+        pos += 1;
+        if header_byte > 128 {
+            // Extend by copying the next byte (-N + 1) times
+            // however since using uint8 instead of int8 this will be
+            // (256 - N + 1) times
+            op_len = 257 - header_byte;
+
+            // Check we have enough encoded data
+            if pos > eod { return err_eod }
+
+            // Check segment for excess padding
+            if (idx + op_len) > segment_length {
+                dst.extend([src[pos]; segment_length - idx]);
+
+                return Ok(dst)
+            }
+
+            dst.extend([src[pos]; op_len]);
+            pos += 1;
+        } else if header_byte < 128 {
+            // Extend by literally copying the next (N + 1) bytes
+            op_len = header_byte + 1;
+
+            // Check we have enough encoded data
+            if (pos + header_byte) > eod { return err_eod }
+
+            // Check segment for excess padding
+            if (idx + op_len) > segment_length {
+                dst.extend(src[pos..pos + segment_length - idx]);
+
+                return Ok(dst)
+            }
+
+            dst.extend(src[pos..pos + op_len]);
+            pos += header_byte + 1;
+        } // header_byte == 128 is noop
+
+        if pos >= eod { return Ok(dst) }
+    }
 }
 
 

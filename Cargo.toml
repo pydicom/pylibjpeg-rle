@@ -12,3 +12,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.24.2", features = ["extension-module"] }
+bitvec = { version = "1.0.1" }
