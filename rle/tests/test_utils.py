@@ -199,7 +199,7 @@ class TestEncodePixelData:
             "byteorder": "<",
         }
 
-        msg = r"'bits_allocated' must be 8, 16, 32 or 64"
+        msg = r"'bits_allocated' must be 1, 8, 16, 32 or 64"
         with pytest.raises(ValueError, match=msg):
             encode_pixel_data(b"", **kwargs)
 

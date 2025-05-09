@@ -2,6 +2,8 @@
 use std::convert::TryFrom;
 use std::error::Error;
 
+use bitvec::prelude::*;
+
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use pyo3::types::{PyBytes, PyByteArray};
@@ -154,31 +156,32 @@ fn _decode_frame(
         String::from("'byteorder' must be '>' or '<'").into()
     );
 
-    let mut is_bit_packed: bool = false;
-
-    // Ensure we have a valid bits/px value: 1 or a multiple of 8
+    // Check 'Bits Allocated' is 1 or a multiple of 8
+    let mut is_bit_packed = false;
+    let mut bytes_per_pixel: u8;
     match bpp {
         0 => return err_invalid_bits_allocated,
-        1 => { is_bit_packed = true; },
+        1 => {
+                is_bit_packed = true;
+                bytes_per_pixel = 1;
+        },
         _ => match bpp % 8 {
-            0 => { },
+            0 => {
+                bytes_per_pixel = bpp / 8;
+            },
             _ => return err_invalid_bits_allocated
         }
     }
 
-    // For non-bit-packed data ensure `bytes_per_pixel` is in [1, 2, 4, 8]
-    if !is_bit_packed {
-        let bytes_per_pixel: u8 = bpp / 8;
-        match bytes_per_pixel {
-            1 => {},
-            2 | 4 | 8 => match byteorder {
-                '>' | '<' => {},
-                _ => return err_invalid_byteorder
-            },
-            _ => return err_invalid_bits_allocated
-        }
-    } else {
-
+    // Check `byteorder` is a valid character
+    // Check *Bits Allocated* is in [1, 8, 16, 32, 64]
+    match bytes_per_pixel {
+        1 => {},
+        2 | 4 | 8 => match byteorder {
+            '>' | '<' => {},
+            _ => return err_invalid_byteorder
+        },
+        _ => return err_invalid_bits_allocated
     }
 
     // Parse the RLE header and check results
@@ -187,6 +190,8 @@ fn _decode_frame(
     let encoded_length = src.len();
     if encoded_length < 64 { return err_insufficient_data }
 
+    // Don't need to check the unwrap as we just checked
+    //   there's enough data in `src`
     let header = <&[u8; 64]>::try_from(&src[0..64]).unwrap();
     let all_offsets: [u32; 15] = _parse_header(header);
 
@@ -252,19 +257,18 @@ fn _decode_frame(
 
     Might be a good idea to use bool arrays instead of u8 and implicitly unpack to avoid
     annoyances with multi-segment padding, then convert to u8 at the end.
-
-    bitvec perhaps?
     */
 
     // Decode each segment and place it into the vector
     // ------------------------------------------------
+    // TODO: handle unwrap
     let pps = usize::try_from(nr_pixels).unwrap();
     // Concatenate sample planes into a frame
     if !is_bit_packed {
         // Watch for overflow here; u32 * u32 -> u64
         // Actual values are (u16 * u16) * u8
         let expected_length = usize::try_from(
-            nr_pixels * u32::from(bytes_per_pixel * spp)
+            nr_pixels * nr_segments
         ).unwrap();
 
         // Pre-allocate a vector for the decoded frame
@@ -303,81 +307,69 @@ fn _decode_frame(
             }
         }
 
-        return Ok(frame);
+        return Ok(frame)
+    }
 
     // Bit-packed data
-    // u8 * u32
-    // FIXME
-    let bits_per_segment = usize::try_from(8 * nr_pixels).unwrap();  // wrong!
-    // Each segment is padded to an even length, so segment boundaries should be
-    // whole integers
-
-    // The number of whole bytes per segment, including any padding
-    let mut padding_bytes = 0;
-    match bits_per_segment % 16 {
+    // The number of whole bytes per segment after decoding
+    // TODO: handle unwraps
+    let mut bytes_per_segment = usize::try_from(nr_pixels / 8).unwrap();
+    match nr_pixels % 8 {
         0 => {},
-        1..=8 => { padding_bytes = 2 },
-        9..=15 => { padding_bytes = 1 },
+        _ => { bytes_per_segment += 1); },
     }
-    let bytes_per_segment = bits_per_segment / 8 + padding_bytes;
 
     let mut frame: Vec<u8> = Vec::new();
-    for sample in 0..spp {  // 0..0 or 0..2
+    for idx in 0..(offsets.len() - 1) {  // 0..1 or 0..3
         // Start and end indices of the segment
         let start = usize::try_from(offsets[idx]).unwrap();
         let end = usize::try_from(offsets[idx + 1]).unwrap();
-
-        // Decode the segment into the frame
-        let segment = _decode_segment_into_frame(
+        // TODO: match here on the unwrap
+        let segment = _decode_bit_packed_segment(
             <&[u8]>::try_from(&src[start..end]).unwrap(),
-            bytes_per_segment,
+            usize::from(bytes_per_segment),
         )?;
+
         if segment.len() != bytes_per_segment { return err_segment_length }
 
-        if spp == 0 { return Ok(segment) }
+        if spp == 1 { return Ok(segment) }
 
-        if !is_padded {
-            frame.extend(segment);
-        } else {
-            // hmm
-        }
-
+        frame.extend(segment);
     }
 
-    // Concatenate the segments together, bit shifting to ensure any padding is removed
+    // Multiple samples but byte aligned
+    if nr_pixels % 8 == 0 { return Ok(frame) }
 
-    Ok(frame)
-}
-
-
-/*
-fn _shift_bit_packed_segment(
-    prefix: u8, src: Vec<u8>, shift: u8
-) -> Vec<u8> {
-    assert!(0 < shift < 8);
-
-    let mut dst = Vec::new();
-    // shift the prefix to the right by the required shift
-    dst.push(prefix >> (8 - shift))
-
-    for idx in 0..src.len() {
-        dst[idx] = src[idx] << shift;
-        dst[idx] |= src[idx + 1] >> (8 - shift);
+    // Multiple samples but not byte aligned
+    //  -> need to remove the bit padding between segments
+    // TODO: handle unwraps
+    let mut bv = BitVec::<_, Msb0>::from_vec(frame);
+    let step = usize::try_from(nr_pixels).unwrap();
+    for start in (step..bv.len() - 1).step_by(step) {
+        let end = start + (8 - usize::try_from(nr_pixels % 8).unwrap());
+        let bv2 = bv.drain(start..end);
     }
 
-    dst
+    // Set any trailing bits to 0b0
+    bv.set_uninitialized(false);
+
+    Ok(bv.into_vec())
 }
-*/
 
 
 fn _decode_bit_packed_segment(
     src: &[u8], segment_length: usize
 ) -> Result<Vec<u8>, Box<dyn Error>> {
-    //
+    /*
+
+    The returned data is guaranteed to be no more than segment_length in size.
+    */
     let eod = src.len() - 1;
     let mut pos = 0;
     let mut header_byte: usize;
     let mut dst: Vec<u8> = Vec::new();
+    let mut op_len: usize;
+    let mut idx: usize = 0;  // number of bytes decoded
 
     let err_eod = Err(
         String::from(
@@ -402,12 +394,13 @@ fn _decode_bit_packed_segment(
 
             // Check segment for excess padding
             if (idx + op_len) > segment_length {
-                dst.extend([src[pos]; segment_length - idx]);
+                dst.extend(vec![src[pos]; segment_length - idx]);
 
                 return Ok(dst)
             }
 
-            dst.extend([src[pos]; op_len]);
+            dst.extend(vec![src[pos]; op_len]);
+            idx += op_len;
             pos += 1;
         } else if header_byte < 128 {
             // Extend by literally copying the next (N + 1) bytes
@@ -418,13 +411,14 @@ fn _decode_bit_packed_segment(
 
             // Check segment for excess padding
             if (idx + op_len) > segment_length {
-                dst.extend(src[pos..pos + segment_length - idx]);
+                dst.extend(&src[pos..pos + segment_length - idx]);
 
                 return Ok(dst)
             }
 
-            dst.extend(src[pos..pos + op_len]);
+            dst.extend(&src[pos..pos + op_len]);
             pos += header_byte + 1;
+            idx += op_len;
         } // header_byte == 128 is noop
 
         if pos >= eod { return Ok(dst) }
@@ -673,12 +667,14 @@ fn _encode_frame(
         Required if bpp is greater than 1, '>' if `src` is in big endian byte
         order, '<' if little endian.
     */
+
+    // Pre-define our errors for neatness
     let err_invalid_nr_samples = Err(
         String::from("The (0028,0002) 'Samples per Pixel' must be 1 or 3").into()
     );
     let err_invalid_bits_allocated = Err(
         String::from(
-            "The (0028,0100) 'Bits Allocated' value must be 8, 16, 32 or 64"
+            "The (0028,0100) 'Bits Allocated' value must be 1, 8, 16, 32 or 64"
         ).into()
     );
     let err_invalid_nr_segments = Err(
@@ -699,22 +695,31 @@ fn _encode_frame(
         String::from("'byteorder' must be '>' or '<'").into()
     );
 
-    // Check 'Samples per Pixel'
+    // Check 'Samples per Pixel' is either 1 or 3
     match spp {
         1 | 3 => {},
         _ => return err_invalid_nr_samples
     }
 
-    // Check 'Bits Allocated'
+    // Check 'Bits Allocated' is 1 or a multiple of 8
+    let mut is_bit_packed = false;
+    let mut bytes_per_pixel: u8;
     match bpp {
         0 => return err_invalid_bits_allocated,
+        1 => {
+                is_bit_packed = true;
+                bytes_per_pixel = 1;
+        },
         _ => match bpp % 8 {
-            0 => {},
+            0 => {
+                bytes_per_pixel = bpp / 8;
+            },
             _ => return err_invalid_bits_allocated
         }
     }
-    // Ensure `bytes_per_pixel` is in [1, 2, 4, 8]
-    let bytes_per_pixel: u8 = bpp / 8;
+
+    // Check `byteorder` is a valid character
+    // Check *Bits Allocated* is in [1, 8, 16, 32, 64]
     match bytes_per_pixel {
         1 => {},
         2 | 4 | 8 => match byteorder {
@@ -725,11 +730,15 @@ fn _encode_frame(
     }
 
     // Ensure parameters are consistent
+    // TODO: handle unwrap
     let r = usize::try_from(rows).unwrap();
     let c = usize::try_from(cols).unwrap();
 
-    if src.len() != r * c * usize::from(spp * bytes_per_pixel) {
-        return err_invalid_parameters
+    // FIXME: add support for bit-packed data
+    if !is_bit_packed {
+        if src.len() != r * c * usize::from(spp * bytes_per_pixel) {
+            return err_invalid_parameters
+        }
     }
 
     let nr_segments: u8 = spp * bytes_per_pixel;
@@ -766,6 +775,7 @@ fn _encode_frame(
             .cloned()
             .collect();
 
+        // FIXME: `cols` probably not correct for bit-packed data
         _encode_segment_from_vector(segment, dst, cols)?;
     }
 
