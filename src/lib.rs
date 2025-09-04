@@ -2,7 +2,7 @@
 use std::convert::TryFrom;
 use std::error::Error;
 
-use bitvec::prelude::*;
+// use bitvec::prelude::*;
 
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
@@ -60,7 +60,7 @@ fn _parse_header(src: &[u8; 64]) -> [u32; 15] {
     Parameters
     ----------
     src
-        The 64 byte RLE header.
+        The 64 byte RLE header containing 15 little-endian ordered offset values.
     */
     return [
         u32::from_le_bytes([ src[4],  src[5],  src[6],  src[7]]),
@@ -158,7 +158,7 @@ fn _decode_frame(
 
     // Check 'Bits Allocated' is 1 or a multiple of 8
     let mut is_bit_packed = false;
-    let mut bytes_per_pixel: u8;
+    let mut bytes_per_pixel: u8;  // Valid values are 1 | 2 | 4 | 8
     match bpp {
         0 => return err_invalid_bits_allocated,
         1 => {
@@ -193,6 +193,7 @@ fn _decode_frame(
     // Don't need to check the unwrap as we just checked
     //   there's enough data in `src`
     let header = <&[u8; 64]>::try_from(&src[0..64]).unwrap();
+    // All 15 header offsets, however no guarantee they will be non-zero
     let all_offsets: [u32; 15] = _parse_header(header);
 
     // First offset must always be 64
@@ -221,13 +222,19 @@ fn _decode_frame(
     // Check the samples per pixel is conformant
     let spp: u8 = nr_segments / bytes_per_pixel;
     match spp {
-        1 | 3 => {},
+        1 => {},
+        3 => {
+            // Bit packed data must be 1 sample per pixel
+            match bpp {
+                1 => { return err_invalid_nr_samples },
+                _ => {}
+            }
+        },
         _ => return err_invalid_nr_samples
     }
 
-    /*
-    Example
-    -------
+    /* Example
+    ----------
     RLE encoded data is ordered like this (for 16-bit, 3 sample):
       Segment: 1     | 2     | 3     | 4     | 5     | 6
                R MSB | R LSB | G MSB | G LSB | B MSB | B LSB
@@ -240,23 +247,6 @@ fn _decode_frame(
       All red samples             | All green samples           | All blue
       Pxl 1   Pxl 2   ... Pxl N   | Pxl 1   Pxl 2   ... Pxl N   | ...
       MSB LSB MSB LSB ... MSB LSB | MSB LSB MSB LSB ... MSB LSB | ...
-    */
-
-    /*
-    Bit-packed data
-    ---------------
-
-    For bit-packed data (i.e. a *Bits Allocated* of 1), we decode the RLE encoding but
-    leave the bit-packing in place. This means the length of each decoded segment is not
-    equal to the number of pixels but instead the number of pixels / 8, rounded up to the
-    nearest whole integer with the difference being accounted for by padding 0b0 bits.
-
-    Each decoded segment must have these padding bits removed and the final frame should be
-    the concatenated unpadded segments. Fortunately for bit-packed data there can be at
-    most 3 segments (with a *Samples per Pixel* of 3).
-
-    Might be a good idea to use bool arrays instead of u8 and implicitly unpack to avoid
-    annoyances with multi-segment padding, then convert to u8 at the end.
     */
 
     // Decode each segment and place it into the vector
@@ -303,6 +293,7 @@ fn _decode_frame(
                     usize::from(bytes_per_pixel),
                     usize::from(byte_offset) + so
                 )?;
+
                 if len != pps { return err_segment_length }
             }
         }
@@ -310,50 +301,32 @@ fn _decode_frame(
         return Ok(frame)
     }
 
-    // Bit-packed data
-    // The number of whole bytes per segment after decoding
-    // TODO: handle unwraps
-    let mut bytes_per_segment = usize::try_from(nr_pixels / 8).unwrap();
+    /* Bit-packed data
+    ------------------
+    For bit-packed data (i.e. a *Bits Allocated* of 1), we decode the RLE encoded data but
+    leave the bit-packing in place. This means the length of each decoded segment is not
+    equal to the number of pixels but instead the number of pixels / 8, rounded up to the
+    nearest whole integer, with the difference being accounted for by 0b0 padding bits.
+    */
+
+    // The expected number of whole bytes per segment after decoding
+    let mut bytes_per_segment: usize;
     match nr_pixels % 8 {
-        0 => {},
-        _ => { bytes_per_segment += 1); },
+        0 => { bytes_per_segment = pps / 8; },
+        _ => { bytes_per_segment = (pps + (8 - pps % 8)) / 8; },
     }
 
-    let mut frame: Vec<u8> = Vec::new();
-    for idx in 0..(offsets.len() - 1) {  // 0..1 or 0..3
-        // Start and end indices of the segment
-        let start = usize::try_from(offsets[idx]).unwrap();
-        let end = usize::try_from(offsets[idx + 1]).unwrap();
-        // TODO: match here on the unwrap
-        let segment = _decode_bit_packed_segment(
-            <&[u8]>::try_from(&src[start..end]).unwrap(),
-            usize::from(bytes_per_segment),
-        )?;
+    // For bit-packed data we can only have 1 segment.
+    let start = usize::try_from(offsets[0]).unwrap();
+    let end = usize::try_from(offsets[1]).unwrap();
+    let segment = _decode_bit_packed_segment(
+        <&[u8]>::try_from(&src[start..end]).unwrap(),
+        bytes_per_segment,
+    )?;
 
-        if segment.len() != bytes_per_segment { return err_segment_length }
+    if segment.len() != bytes_per_segment) { return err_segment_length }
 
-        if spp == 1 { return Ok(segment) }
-
-        frame.extend(segment);
-    }
-
-    // Multiple samples but byte aligned
-    if nr_pixels % 8 == 0 { return Ok(frame) }
-
-    // Multiple samples but not byte aligned
-    //  -> need to remove the bit padding between segments
-    // TODO: handle unwraps
-    let mut bv = BitVec::<_, Msb0>::from_vec(frame);
-    let step = usize::try_from(nr_pixels).unwrap();
-    for start in (step..bv.len() - 1).step_by(step) {
-        let end = start + (8 - usize::try_from(nr_pixels % 8).unwrap());
-        let bv2 = bv.drain(start..end);
-    }
-
-    // Set any trailing bits to 0b0
-    bv.set_uninitialized(false);
-
-    Ok(bv.into_vec())
+    return Ok(segment)
 }
 
 
@@ -373,8 +346,7 @@ fn _decode_bit_packed_segment(
 
     let err_eod = Err(
         String::from(
-            "The end of the data was reached before the segment was \
-            completely decoded"
+            "The end of the data was reached before the segment was completely decoded"
         ).into()
     );
 
@@ -625,7 +597,7 @@ fn encode_frame<'py>(
     spp : int
         The number of samples per pixel, supported values are 1 or 3.
     bpp : int
-        The number of bits per pixel, supported values are 8, 16, 32 and 64.
+        The number of bits per pixel, supported values are 1, 8, 16, 32 and 64.
     byteorder : str
         Required if `bpp` is greater than 1, '>' if `src` is in big endian byte
         order, '<' if little endian.
@@ -651,8 +623,8 @@ fn _encode_frame(
     Parameters
     ----------
     src
-        The data to be RLE encoded, ordered as R1, G1, B1, R2, G2, B2, ...,
-        Rn, Gn, Bn (i.e. Planar Configuration 0).
+        The data to be RLE encoded, with multi-sample data ordered as R1, G1, B1,
+        R2, G2, B2, ..., Rn, Gn, Bn (i.e. Planar Configuration 0).
     dst
         The vector storing the encoded data.
     rows
@@ -660,9 +632,10 @@ fn _encode_frame(
     cols
         The number of columns in the data.
     spp
-        The number of samples per pixel, supported values are 1 or 3.
+        The number of samples per pixel, supported values are 1 or 3. May only be 1 if `bpp`
+        is 1.
     bpp
-        The number of bits per pixel, supported values are 8, 16, 32 and 64.
+        The number of bits per pixel, supported values are 1, 8, 16, 32 and 64.
     byteorder
         Required if bpp is greater than 1, '>' if `src` is in big endian byte
         order, '<' if little endian.
@@ -696,26 +669,31 @@ fn _encode_frame(
     );
 
     // Check 'Samples per Pixel' is either 1 or 3
-    match spp {
-        1 | 3 => {},
-        _ => return err_invalid_nr_samples
-    }
-
     // Check 'Bits Allocated' is 1 or a multiple of 8
+    // Check 'Samples per Pixel' is 1 if 'Bits Allocated' is 1
     let mut is_bit_packed = false;
     let mut bytes_per_pixel: u8;
-    match bpp {
-        0 => return err_invalid_bits_allocated,
+    match spp {
         1 => {
-                is_bit_packed = true;
-                bytes_per_pixel = 1;
-        },
-        _ => match bpp % 8 {
-            0 => {
-                bytes_per_pixel = bpp / 8;
-            },
-            _ => return err_invalid_bits_allocated
+            match bpp {
+                1 => {
+                    is_bit_packed = true;
+                    bytes_per_pixel = 1;
+                },
+                8 | 16 | 32 | 64 => {
+                    bytes_per_pixel = bpp / 8;
+                },
+                _ => { return err_invalid_bits_allocated }
+            }
         }
+        3 => {
+            match bpp {
+                1 => { return err_invalid_nr_samples },
+                8 | 16 | 32 | 64 => { bytes_per_pixel = bpp / 8; },
+                _ => { return err_invalid_bits_allocated }
+            }
+        },
+        _ => return err_invalid_nr_samples
     }
 
     // Check `byteorder` is a valid character
@@ -734,11 +712,17 @@ fn _encode_frame(
     let r = usize::try_from(rows).unwrap();
     let c = usize::try_from(cols).unwrap();
 
-    // FIXME: add support for bit-packed data
+    let total_pixels = r * c * usize::from(spp);
     if !is_bit_packed {
-        if src.len() != r * c * usize::from(spp * bytes_per_pixel) {
-            return err_invalid_parameters
+        let total_length = total_pixels * usize::from(bytes_per_pixel);
+        if src.len() != total_length { return err_invalid_parameters }
+    } else {
+        let mut total_length: usize;
+        match total_pixels % 8 {
+            0 => { total_length = total_pixels / 8; },
+            _ => { total_length = (total_pixels + (8 - total_pixels % 8)) / 8; }
         }
+        if src.len() != total_length { return err_invalid_parameters }
     }
 
     let nr_segments: u8 = spp * bytes_per_pixel;
@@ -749,10 +733,11 @@ fn _encode_frame(
     dst.extend(u32::from(nr_segments).to_le_bytes().to_vec());
     dst.extend([0u8; 60].to_vec());
 
-    // A vector of the start indexes used when segmenting - default big endian
+    // A vector of the start indexes used when segmenting
+    // Start with big-endian ordered pixel sample values
     let mut start_indices: Vec<usize> = (0..usize::from(nr_segments)).collect();
     if byteorder != '>' {
-        // `src` has little endian byte ordering
+        // Typically `src` uses little endian byte ordering
         for idx in 0..spp {
             let s = usize::from(idx * bytes_per_pixel);
             let e = usize::from((idx + 1) * bytes_per_pixel);
@@ -761,6 +746,8 @@ fn _encode_frame(
     }
 
     // Encode the data and update the RLE header segment offsets
+    // Segments are ordered from most significant byte to least significant for
+    //  multi-byte values
     for idx in 0..usize::from(nr_segments) {
         // Update RLE header: convert current offset to 4x le ordered u8s
         let current_offset = (u32::try_from(dst.len()).unwrap()).to_le_bytes();
@@ -769,14 +756,21 @@ fn _encode_frame(
         }
 
         // Encode! Note the offset start of the `src` iter
-        let segment: Vec<u8> = src[start_indices[idx]..]
-            .into_iter()
-            .step_by(usize::from(spp * bytes_per_pixel))
-            .cloned()
-            .collect();
+        if !is_bit_packed {
+            let segment: Vec<u8> = src[start_indices[idx]..]
+                .into_iter()
+                .step_by(usize::from(spp * bytes_per_pixel))
+                .cloned()
+                .collect();
 
-        // FIXME: `cols` probably not correct for bit-packed data
-        _encode_segment_from_vector(segment, dst, cols)?;
+            _encode_segment_from_vector(segment, dst, cols)?;
+        } else {
+            // Should only ever be 1 sample per pixel -> 1 segment
+            // cols is wrong here, should be / 8
+            // Also the DICOM Standard says each row should be encoded separately,
+            //  what do we do if the number of columns isn't divisble by 8?
+            _encode_segment_from_vector(src, dst, cols)?;
+        }
     }
 
     Ok(())

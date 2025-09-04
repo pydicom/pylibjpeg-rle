@@ -26,8 +26,6 @@ def decode_pixel_data(
 ) -> Union[np.ndarray, bytearray]:
     """Return the decoded RLE Lossless data as a :class:`numpy.ndarray`.
 
-    Intended for use with *pydicom* ``Dataset`` objects.
-
     Parameters
     ----------
     src : bytes
@@ -192,11 +190,11 @@ def encode_pixel_data(
     **kwargs
         If `ds` is not used then the following are required:
 
-        * ``'rows': int`` the number of rows contained in `src`
-        * ``'columns': int`` the number of columns contained in `src`
-        * ``samples_per_pixel': int`` the number of samples per pixel, either
+        * ``'rows'``: :class:`int` the number of rows contained in `src`
+        * ``'columns'``: :class:`int` the number of columns contained in `src`
+        * ``'samples_per_pixel'``: :class:`int` the number of samples per pixel, either
           1 for monochrome or 3 for RGB or similar data.
-        * ``'bits_allocated': int`` the number of bits needed to contain each
+        * ``'bits_allocated'``: :class:`int` the number of bits needed to contain each
           pixel, either 1, 8, 16, 32 or 64.
 
     Returns
