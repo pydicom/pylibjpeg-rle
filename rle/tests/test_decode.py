@@ -126,6 +126,28 @@ class TestDecodeFrame:
         with pytest.raises(ValueError, match=msg):
             decode_frame(d + b"\x00" * 8, 1, 8, "<")
 
+        # Bits Allocated 1 must be Samples per Pixel 1
+        header = (
+            b"\x03\x00\x00\x00"  # 3 segments
+            b"\x40\x00\x00\x00"  # 64
+            b"\x47\x00\x00\x00"  # 71
+            b"\x4E\x00\x00\x00"  # 78
+        )
+        header += (64 - len(header)) * b"\x00"
+        # 2 x 3 data
+        # 0, 64, 128, 160, 192, 255
+        data = (
+            b"\x05\x00\x40\x80\xA0\xC0\xFF"  # R
+            b"\x05\xFF\xC0\x80\x40\x00\xFF"  # B
+            b"\x05\x01\x40\x80\xA0\xC0\xFE"  # G
+        )
+        msg = (
+            r"The \(0028,0002\) 'Samples per Pixel' must be 1 if \(0028,0100\) 'Bits "
+            r"Allocated' is 1"
+        )
+        with pytest.raises(ValueError, match=msg):
+            decoded = decode_frame(header + data, 2 * 3, 1, "<")
+
     def test_insufficient_frame_literal(self):
         """Test segment with excess padding on lit."""
         d = self.as_bytes([64])
@@ -361,109 +383,19 @@ class TestDecodeFrame:
         """Test decoding bit packed 1 sample/px."""
         header = b"\x01\x00\x00\x00\x40\x00\x00\x00"
         header += (64 - len(header)) * b"\x00"
-        # 0, 64, 128, 160, 192, 255
-        data = b"\x05\x00\x40\x80\xA0\xC0\xFF"
-        # Big endian
-        # 48 px - byte aligned in 6 bytes
-        decoded = decode_frame(header + data, 6 * 8, 1, ">")
+        # 0 0 0 0 0 1 0 1 0 1 1 0 1 1 1 1
+        data = b"\xFC\x00\x07\x01\x00\x01\x00\x01\x01\x00\x01\xFD\x01\x00"
+        decoded = decode_frame(header + data, 16, 1, ">")
         arr = np.frombuffer(decoded, np.dtype("uint8"))
-        assert [0, 64, 128, 160, 192, 255] == arr.tolist()
+        assert [0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1] == arr.tolist()
+        decoded = decode_frame(header + data, 16, 1, "<")
+        assert [0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1] == arr.tolist()
 
-        # 37 px -> 5 bytes
-        decoded = decode_frame(header + data, 4 * 8 + 5, 1, ">")
+        # 0 0 0 0 0 1 0 1 0 1 1 0 1 1 1
+        data = b"\xFC\x00\x07\x01\x00\x01\x00\x01\x01\x00\x01\xFE\x01\x00"
+        decoded = decode_frame(header + data, 15, 1, ">")
         arr = np.frombuffer(decoded, np.dtype("uint8"))
-        assert [0, 64, 128, 160, 192] == arr.tolist()
-
-        # 2 px -> 1 byte
-        decoded = decode_frame(header + data, 2, 1, ">")
-        arr = np.frombuffer(decoded, np.dtype("uint8"))
-        assert [0] == arr.tolist()
-
-        # Little-endian
-        decoded = decode_frame(header + data, 6 * 8, 1, "<")
-        arr = np.frombuffer(decoded, np.dtype("uint8"))
-        assert [0, 64, 128, 160, 192, 255] == arr.tolist()
-
-        decoded = decode_frame(header + data, 4 * 8 + 5, 1, "<")
-        arr = np.frombuffer(decoded, np.dtype("uint8"))
-        assert [0, 64, 128, 160, 192] == arr.tolist()
-
-        decoded = decode_frame(header + data, 2, 1, "<")
-        arr = np.frombuffer(decoded, np.dtype("uint8"))
-        assert [0] == arr.tolist()
-
-    def test_u8_3s_bs1(self):
-        """Test decoding bit packed 3 sample/px."""
-        header = (
-            b"\x03\x00\x00\x00"  # 3 segments
-            b"\x40\x00\x00\x00"  # 64
-            b"\x47\x00\x00\x00"  # 71
-            b"\x4E\x00\x00\x00"  # 78
-        )
-        header += (64 - len(header)) * b"\x00"
-        # 0, 64, 128, 160, 192, 255
-        data = (
-            b"\x05\x00\x40\x80\xA0\xC0\xFF"  # R
-            b"\x05\x7F\xC0\x80\x40\x00\xFF"  # B
-            b"\x05\x01\x40\x80\xA0\xC0\xFE"  # G
-        )
-        # 48 px - byte aligned in 18 bytes
-        decoded = decode_frame(header + data, 6 * 8, 1, "<")
-        arr = np.frombuffer(decoded, np.dtype("uint8"))
-        # Ordered all R, all G, all B
-        assert [0, 64, 128, 160, 192, 255] == arr[:6].tolist()
-        assert [127, 192, 128, 64, 0, 255] == arr[6:12].tolist()
-        assert [1, 64, 128, 160, 192, 254] == arr[12:].tolist()
-
-        # 47 px - non-byte aligned in 18 bytes
-        decoded = decode_frame(header + data, 6 * 8 - 1, 1, "<")
-        arr = np.frombuffer(decoded, np.dtype("uint8"))
-        # Boundaries are 47 | 94 | 141
-        #                       v removed
-        # 255 | 127: 0b[1111_111x 0b0]111_1111 -> 0b1111_1110
-        assert [0, 64, 128, 160, 192, 254] == arr[:6].tolist()
-        # Left shift values by 1 bit
-        # 127 | 192: 0b0[111_1111 0b1]100_0000 -> 0b1111_1111
-        # 192 | 128: 0b1[100_0000 0b1]000_0000 -> 0b1000_0001
-        # 128 |  64: 0b1[000_0000 0b0]100_0000 -> 0b0000_0000
-        #  64 |   0: 0b0[100_0000 0b0]000_0000 -> 0b1000_0000
-        #   0 | 255: 0b0[000_0000 0b1]111_1111 -> 0b0000_0001
-        #                       v removed
-        # 255 |   1: 0b1[111_111x 0b00]00_0001 -> 0b1111_1100
-        assert [255, 129, 0, 128, 1, 252] == arr[6:12].tolist()
-        # Left shift values by 2 bits
-        #   1 |  64: 0b00[00_0001 0b01]00_0000 -> 0b0000_0101
-        #  64 | 128: 0b01[00_0000 0b10]00_0000 -> 0b0000_0010
-        # 128 | 160: 0b10[00_0000 0b10]10_0000 -> 0b0000_0010
-        # 160 | 192: 0b10[10_0000 0b11]00_0000 -> 0b1000_0011
-        # 192 | 254: 0b11[00_0000 0b11]11_1110 -> 0b0000_0011
-        #                       v removed
-        # 254 |   x: 0b11[11_111x             -> 0b1111_1000
-        assert [5, 2, 2, 131, 3, 248] == arr[12:].tolist()
-
-        # 41 px - non-byte aligned in 16 bytes
-        decoded = decode_frame(header + data, 5 * 8 + 1, 1, "<")
-        arr = np.frombuffer(decoded, np.dtype("uint8"))
-        # Boundaries are 48 | 96 | 144 -> 41 | 82 | 123
-        #                vvv vvvv removed
-        # 255 | 255: 0b[1xxx_xxxx 0b0111_111]1 -> 0b1011_1111
-        assert [0, 64, 128, 160, 192, 191] == arr[:6].tolist()
-        # Left shift values by 7 bits
-        # 255 | 192: 0b1111_111[1 0b1100_000]0 -> 0b1110_0000
-        # 192 | 128: 0b1100_000[0 0b1000_000]0 -> 0b0100_0000
-        # 128 |  64: 0b1000_000[0 0b0100_000]0 -> 0b0010_0000
-        #  64 |   0: 0b0100_000[0 0b0000_000]0 -> 0b0000_0000
-        #                                  vvv vvvv removed
-        #   0 | 255 |   1: 0b0000_000[0 0b1xxx_xxxx 0b0000_00]01 -> 0b0100_0000
-        assert [224, 64, 32, 0, 64] == arr[6:11].tolist()
-        # Left shift values by 14 bits
-        #   1 |  64: 0b0000_00[01 0b0100_00]00 -> 0b0101_0000
-        #  64 | 128: 0b0100_00[00 0b1000_00]00 -> 0b0010_0000
-        # 128 | 160: 0b1000_00[00 0b1010_00]00 -> 0b0010_1000
-        # 160 | 192: 0b1010_00[00 0b1100_00]00 -> 0b0011_0000
-        #                           vvv vvvv removed
-        # 192 | 254: 0b1100_[00 0b1]xxx_xxxx   -> 0b0010_0000
-        assert [80, 32, 40, 48, 32] == arr[11:].tolist()
+        assert [0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1] == arr.tolist()
 
 
 @pytest.mark.skipif(not HAVE_PYDICOM, reason="No pydicom")

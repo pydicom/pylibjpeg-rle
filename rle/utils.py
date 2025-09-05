@@ -1,12 +1,19 @@
 """Utility functions."""
 
 import enum
+import math
 import sys
-from typing import Iterator, Optional, Any, TYPE_CHECKING, cast, Union
+from typing import Iterator, Any, TYPE_CHECKING, cast
 
 import numpy as np
 
-from rle.rle import decode_frame, decode_segment, encode_frame, encode_segment
+from rle.rle import (
+    decode_frame,
+    decode_segment,
+    encode_frame,
+    encode_segment,
+)
+from rle.rle import pack_bits as _pack_bits, unpack_bits as _unpack_bits
 
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -20,11 +27,16 @@ class Version(enum.IntEnum):
 
 def decode_pixel_data(
     src: bytes,
-    ds: Optional["Dataset"] = None,
+    ds: "Dataset | None" = None,
     version: int = Version.v1,
     **kwargs: Any,
-) -> Union[np.ndarray, bytearray]:
-    """Return the decoded RLE Lossless data as a :class:`numpy.ndarray`.
+) -> np.ndarray | bytearray:
+    """Return the decoded RLE Lossless data as a :class:`numpy.ndarray` or
+    :class:`bytearray`.
+
+    .. versionchanged:: 2.2
+
+        Added the ``"pack_bits"`` decoding option and support for *Bits Allocated* 1.
 
     Parameters
     ----------
@@ -33,7 +45,7 @@ def decode_pixel_data(
     ds : pydicom.dataset.Dataset, optional
         A :class:`~pydicom.dataset.Dataset` containing the group ``0x0028``
         elements corresponding to the image frame. If not used then `kwargs`
-        must be supplied. Only used with version ``1``.
+        must be supplied. Only used with `version` ``1``.
     version : int, optional
 
         * If ``1`` (default) then return the image data as an :class:`numpy.ndarray`
@@ -41,22 +53,26 @@ def decode_pixel_data(
     **kwargs
         Required keys if `ds` is not supplied or if version is ``2``:
 
-        * ``"rows"``: :class:`int` - the number of rows in the decoded image
+        * ``"rows"``: :class:`int` - the number of rows in the decoded image.
         * ``"columns"``: :class:`int` - the number of columns in the decoded
-          image
+          image.
         * ``"bits_allocated"``: :class:`int` - the number of bits allocated
-          to each pixel
+          to each pixel.
 
         Current decoding options are:
 
-        * ``{'byteorder': str}`` specify the byte ordering for the decoded data
-        when more than 8 bits per pixel are used, should be '<' for little
-        endian ordering (default) or '>' for big-endian ordering.
+        * ``"byteorder"``: :class:`str` - specify the byte ordering for the decoded
+          data when more than 8 bits per pixel are used, should be ``'<'`` for little
+          endian ordering (default) or ``'>'`` for big-endian ordering.
+        * ``"pack_bits"``: :class:`bool` - (`version` 2 only) if ``True`` and
+          ``"bits_allocated"`` is ``1`` then return the decoded data in its packed
+          form (8 pixels per byte), otherwise return the decoded data in its unpacked
+          form (1 pixel per byte). Default ``False``.
 
     Returns
     -------
     bytearray | numpy.ndarray
-        The image data as either a bytearray or ndarray.
+        The image data as either a bytearray (`version` 2) or ndarray (`version` 1).
 
     Raises
     ------
@@ -93,12 +109,18 @@ def decode_pixel_data(
     rows = cast(int, kwargs.get("rows"))
     bits_allocated = cast(int, kwargs.get("bits_allocated"))
     byteorder = kwargs.get("byteorder", "<")
+    as_packed = kwargs.get("pack_bits", False)
 
-    return cast(bytearray, decode_frame(src, rows * columns, bits_allocated, byteorder))
+    frame: bytearray = decode_frame(src, rows * columns, bits_allocated, byteorder)
+
+    if bits_allocated != 1 or as_packed is False:
+        return frame
+
+    return _pack_bits(frame, "<")
 
 
 def encode_array(
-    arr: "np.ndarray", ds: Optional["Dataset"] = None, **kwargs: Any
+    arr: "np.ndarray", ds: "Dataset | None" = None, **kwargs: Any
 ) -> Iterator[bytes]:
     """Yield RLE encoded frames from `arr`.
 
@@ -157,8 +179,8 @@ def encode_array(
 
 def encode_pixel_data(
     src: bytes,
-    ds: Optional["Dataset"] = None,
-    byteorder: Optional[str] = None,
+    ds: "Dataset | None" = None,
+    byteorder: str | None = None,
     **kwargs: Any,
 ) -> bytes:
     """Return `src` encoded using the DICOM RLE (PackBits) algorithm.
@@ -178,7 +200,9 @@ def encode_pixel_data(
     Parameters
     ----------
     src : bytes
-        The data for a single image frame data to be RLE encoded.
+        The data for a single image frame data to be RLE encoded. For *Bits Allocated*
+        1 if `src` contains bit-packed data then it will be automatically unpacked
+        prior to encoding.
     ds : pydicom.dataset.Dataset, optional
         The dataset corresponding to `src` with matching values for *Rows*,
         *Columns*, *Samples per Pixel* and *Bits Allocated*. Required if
@@ -195,7 +219,7 @@ def encode_pixel_data(
         * ``'samples_per_pixel'``: :class:`int` the number of samples per pixel, either
           1 for monochrome or 3 for RGB or similar data.
         * ``'bits_allocated'``: :class:`int` the number of bits needed to contain each
-          pixel, either 1, 8, 16, 32 or 64.
+          pixel, must be 1, 8, 16, 32 or 64.
 
     Returns
     -------
@@ -214,34 +238,37 @@ def encode_pixel_data(
         spp = kwargs["samples_per_pixel"]
 
     # Validate input
-    if spp not in [1, 3]:
+    if spp not in (1, 3):
         msg = "(0028,0002) 'Samples per Pixel'" if ds else "'samples_per_pixel'"
         raise ValueError(f"{msg} must be 1 or 3")
 
-    if bpp not in [1, 8, 16, 32, 64]:
+    if bpp not in (1, 8, 16, 32, 64):
         msg = "(0028,0100) 'Bits Allocated'" if ds else "'bits_allocated'"
         raise ValueError(f"{msg} must be 1, 8, 16, 32 or 64")
 
-    if bpp / 8 * spp > 15:
+    if bpp != 1 and bpp / 8 * spp > 15:
         raise ValueError(
             "Unable to encode the data as the RLE format used by the DICOM "
             "Standard only allows a maximum of 15 segments"
         )
 
-    byteorder = "<" if bpp == 8 else byteorder
+    byteorder = "<" if bpp <= 8 else byteorder
     if byteorder not in ("<", ">"):
         raise ValueError(
             "A valid 'byteorder' is required when the number of bits per "
             "pixel is greater than 8"
         )
 
-    if len(src) != (r * c * bpp / 8 * spp):
+    src_length = len(src)
+    if bpp == 1 and src_length == math.ceil((r * c) / 8):
+        # src is bit packed, so unpack
+        src = _unpack_bits(src, r * c, "<")
+    elif src_length != (r * c * bpp / 8 * spp):
         raise ValueError("The length of the data doesn't match the image parameters")
 
     return cast(bytes, encode_frame(src, r, c, spp, bpp, byteorder))
 
 
-# TODO: unpack Bits Stored 1
 def generate_frames(ds: "Dataset", reshape: bool = True) -> Iterator[np.ndarray]:
     """Yield a *Pixel Data* frame from `ds` as an :class:`~numpy.ndarray`.
 
@@ -317,7 +344,6 @@ def generate_frames(ds: "Dataset", reshape: bool = True) -> Iterator[np.ndarray]
             yield arr.transpose(1, 2, 0)
 
 
-# TODO: unpack Bits Stored 1
 def pixel_array(ds: "Dataset") -> "np.ndarray":
     """Return the entire *Pixel Data* as an :class:`~numpy.ndarray`.
 
@@ -376,3 +402,57 @@ def pixel_data(arr: "np.ndarray", ds: "Dataset") -> bytes:
     from pydicom.encaps import encapsulate
 
     return encapsulate([ii for ii in encode_array(arr, ds)])
+
+
+def pack_bits(src: bytes | bytearray, bitorder: str = "<") -> bytearray:
+    """Bit pack `src`
+
+    .. versionadded: 2.2
+
+    Parameters
+    ----------
+    src : bytes | bytearray
+        The data to be bit-packed, should only contain zeros and ones.
+    bitorder : str, optional
+        The bit ordering to use for the packed data, should be '<' for little endian
+        ordering (default) or '>' for big-endian ordering. For example, if `src` is
+        ``b"\x00\x01\x00\x00"`` then ``0x02`` (``0b00000010``) will be returned for
+        little endian ordering and ``0x40`` (``0b01000000``) for big endian ordering.
+
+    Returns
+    -------
+    bytearray
+        The bit-packed data, one byte per 8 bytes of the original with padding bits
+        added if the length of `src` is not a multiple of 8.
+    """
+    return _pack_bits(src, bitorder)
+
+
+def unpack_bits(
+    src: bytes | bytearray, count: int | None = None, bitorder: str = "<"
+    ) -> bytearray:
+    """Bit unpack `src`
+
+    .. versionadded: 2.2
+
+    Parameters
+    ----------
+    src : bytes | bytearray
+        The data to be unpacked.
+    count : int | None, optional
+        If ``None`` (default) then return the entire unpacked `src`, otherwise return
+        the first `count` number of bytes from the unpacked `src`.
+    bitorder : str, optional
+        The bit ordering to used by the packed data, should be '<' for little endian
+        ordering (default) or '>' for big-endian ordering.
+
+    Returns
+    -------
+    bytearray
+        The unpacked data, 8 bytes per byte of `src`.
+    """
+    maximum_nr_bits = len(src) * 8
+    if count is None or not (0 < count <= maximum_nr_bits):
+        count = maximum_nr_bits
+
+    return _unpack_bits(src, count, bitorder)

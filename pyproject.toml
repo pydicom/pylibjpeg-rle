@@ -54,9 +54,13 @@ homepage = "https://github.com/pydicom/pylibjpeg-rle"
 [project.entry-points."pylibjpeg.pixel_data_encoders"]
 "1.2.840.10008.1.2.5" = "rle:encode_pixel_data"
 
+[project.entry-points."pylibjpeg.utils"]
+"pack_bits" = "rle:pack_bits"
+"unpack_bits" = "rle:unpack_bits"
+
 [tool.coverage.run]
 omit = [
-    "libjpeg/tests/*",
+    "rle/tests/*",
 ]
 
 [tool.mypy]
