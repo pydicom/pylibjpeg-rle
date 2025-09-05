@@ -1,0 +1,9 @@
+.. _v2.2.0:
+
+2.2.0
+=====
+
+Enhancements
+............
+
+* Added support for encoding and decoding RLE data with a *Bits Allocated* of 1

@@ -1,6 +1,6 @@
 [package]
 name = "pylibjpeg-rle"
-version = "1.1.0"
+version = "1.2.0"
 authors = ["scaramallion <scaramallion@users.noreply.github.com>"]
 edition = "2024"
 exclude = [".github", "docs", ".codecov.yml", "asv.*", ".gitignore", ".coveragerc"]
@@ -11,4 +11,4 @@ crate-type = ["cdylib"]
 
 
 [dependencies]
-pyo3 = { version = "0.24.2", features = ["extension-module"] }
+pyo3 = { version = "0.26.0", features = ["extension-module"] }
