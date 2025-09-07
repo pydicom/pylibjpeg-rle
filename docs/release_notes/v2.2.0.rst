@@ -3,7 +3,14 @@
 2.2.0
 =====
 
+Changes
+.......
+
+* Use PyO3 v0.26.0
+* Supported Python versions are 3.10 to 3.14
+
 Enhancements
 ............
 
-* Added support for encoding and decoding RLE data with a *Bits Allocated* of 1
+* Added support for *Bits Allocated* 1
+* Added `pack_bit()` and `unpack_bits()` functions
