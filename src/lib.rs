@@ -2,8 +2,6 @@
 use std::convert::TryFrom;
 use std::error::Error;
 
-// use bitvec::prelude::*;
-
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use pyo3::types::{PyBytes, PyByteArray};
@@ -423,74 +421,6 @@ fn _decode_frame(
     }
 
     return Ok(frame)
-}
-
-
-fn _decode_bit_packed_segment(
-    src: &[u8], segment_length: usize
-) -> Result<Vec<u8>, Box<dyn Error>> {
-    /*
-
-    The returned data is guaranteed to be no more than segment_length in size.
-    */
-    let eod = src.len() - 1;
-    let mut pos = 0;
-    let mut header_byte: usize;
-    let mut dst: Vec<u8> = Vec::new();
-    let mut op_len: usize;
-    let mut idx: usize = 0;  // number of bytes decoded
-
-    let err_eod = Err(
-        String::from(
-            "The end of the data was reached before the segment was completely decoded"
-        ).into()
-    );
-
-    loop {
-        // `header_byte` is equivalent to N in the DICOM Standard
-        // usize is at least u8
-        header_byte = usize::from(src[pos]);
-        pos += 1;
-        if header_byte > 128 {
-            // Extend by copying the next byte (-N + 1) times
-            // however since using uint8 instead of int8 this will be
-            // (256 - N + 1) times
-            op_len = 257 - header_byte;
-
-            // Check we have enough encoded data
-            if pos > eod { return err_eod }
-
-            // Check segment for excess padding
-            if (idx + op_len) > segment_length {
-                dst.extend(vec![src[pos]; segment_length - idx]);
-
-                return Ok(dst)
-            }
-
-            dst.extend(vec![src[pos]; op_len]);
-            idx += op_len;
-            pos += 1;
-        } else if header_byte < 128 {
-            // Extend by literally copying the next (N + 1) bytes
-            op_len = header_byte + 1;
-
-            // Check we have enough encoded data
-            if (pos + header_byte) > eod { return err_eod }
-
-            // Check segment for excess padding
-            if (idx + op_len) > segment_length {
-                dst.extend(&src[pos..pos + segment_length - idx]);
-
-                return Ok(dst)
-            }
-
-            dst.extend(&src[pos..pos + op_len]);
-            pos += header_byte + 1;
-            idx += op_len;
-        } // header_byte == 128 is noop
-
-        if pos >= eod { return Ok(dst) }
-    }
 }
 
 
