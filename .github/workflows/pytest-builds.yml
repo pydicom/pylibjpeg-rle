@@ -31,7 +31,7 @@ jobs:
         curl https://sh.rustup.rs -sSf | sh -s -- -y
 
     - name: Install dependencies (!= 3.14)
-      if: ${{ matrix.python-version }} != '3.14'
+      if: ${{ matrix.python-version != '3.14' }}
       run: |
         pip install --upgrade pip
         pip install setuptools-rust pytest pydicom coverage pytest-cov
@@ -39,7 +39,7 @@ jobs:
         pip install -e .
 
     - name: Install dependencies (== 3.14)
-      if: ${{ matrix.python-version }} == '3.14'
+      if: ${{ matrix.python-version == '3.14' }}
       run: |
         pip install --upgrade pip
         pip install setuptools-rust pytest coverage pytest-cov
