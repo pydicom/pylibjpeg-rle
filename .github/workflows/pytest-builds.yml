@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
@@ -24,16 +24,27 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
+        allow-prereleases: true
 
     - name: Install Rust (stable)
       run:
         curl https://sh.rustup.rs -sSf | sh -s -- -y
 
-    - name: Install dependencies
+    - name: Install dependencies (!= 3.14)
+      if: ${{ matrix.python-version != '3.14' }}
       run: |
         pip install --upgrade pip
         pip install setuptools-rust pytest pydicom coverage pytest-cov
         pip install git+https://github.com/pydicom/pylibjpeg-data
+        pip install -e .
+
+    - name: Install dependencies (== 3.14)
+      if: ${{ matrix.python-version == '3.14' }}
+      run: |
+        pip install --upgrade pip
+        pip install setuptools-rust pytest coverage pytest-cov
+        pip install git+https://github.com/pydicom/pylibjpeg-data
+        pip install git+https://github.com/pydicom/pydicom
         pip install -e .
 
     - name: Test with pytest

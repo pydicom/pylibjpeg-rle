@@ -19,7 +19,129 @@ fn rle(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_segment, m)?);
     m.add_function(wrap_pyfunction!(encode_frame, m)?);
 
+    m.add_function(wrap_pyfunction!(pack_bits, m)?);
+    m.add_function(wrap_pyfunction!(unpack_bits, m)?);
+
     Ok(())
+}
+
+
+// Utilities
+// ---------
+
+#[pyfunction]
+fn pack_bits<'py>(
+    src: Vec<u8>, bitorder: char, py: Python<'py>
+) -> PyResult<Bound<'py, PyByteArray>> {
+
+    match bitorder {
+        '>' | '<' => {},
+        _ => { return Err(PyValueError::new_err("'bitorder' must be '>' or '<'")) }
+    }
+
+    // Check values are in (0, 1)
+    if src.iter().max() > Some(&1u8) {
+        return Err(
+            PyValueError::new_err("Only binary input (containing zeros or ones) can be packed")
+        )
+    }
+
+    let mut dst: Vec<u8> = Vec::new();
+
+    if bitorder == '<' {
+        // Bits use little endian ordering
+        for chunk in src.chunks_exact(8) {
+            let mut packed = 0u8;
+            for idx in 0..8 {
+                packed |= chunk[idx] << idx;
+            }
+            dst.push(packed);
+        }
+    } else {
+        // Bits use big endian ordering
+        for chunk in src.chunks_exact(8) {
+            let mut packed = 0u8;
+            for idx in 0..8 {
+                packed |= chunk[idx] << (7 - idx);
+            }
+            dst.push(packed);
+        }
+    }
+
+    let remainder = src.len() % 8;
+    if remainder > 0 {
+        let mut last_byte = 0u8;
+        // ..., 0, 1, 0, 0 iterates as 0, 0, 1, 0
+        if bitorder == '<' {
+            for (idx, bit) in src.iter().rev().take(remainder).enumerate() {
+                // 0 0 0 0 0 0 1 0
+                last_byte |= bit << (remainder - idx - 1);
+            }
+        } else {
+            for (idx, bit) in src.iter().rev().take(remainder).enumerate() {
+                // 0 1 0 0 0 0 0 0
+                last_byte |= bit << (8 - remainder - idx);
+            }
+        }
+        dst.push(last_byte);
+    }
+
+    Ok(PyByteArray::new(py, &dst))
+}
+
+
+#[pyfunction]
+fn unpack_bits<'py>(
+    src: Vec<u8>, count: u128, bitorder: char, py: Python<'py>
+) -> PyResult<Bound<'py, PyByteArray>> {
+    match bitorder {
+        '>' | '<' => {},
+        _ => { return Err(PyValueError::new_err("'bitorder' must be '>' or '<'")) }
+    }
+
+    // The maximum value of `count` should be 2^65
+    let nr_bits: u128;
+    let nr_bytes = u128::try_from(src.len()).unwrap();
+    if count == 0 || count > nr_bytes * 8 {
+        nr_bits = nr_bytes * 8;
+    } else {
+        nr_bits = count;
+    }
+
+    let mut dst: Vec<u8> = Vec::new();
+    // Shouldn't be more than 2^64
+    let nr_whole_bytes = usize::try_from(nr_bits / 8).unwrap();
+    // Shouldn't be more than 7
+    let nr_remainder_bits = usize::try_from(nr_bits % 8).unwrap();
+
+    if bitorder == '<' {
+        // Unpack the whole bytes
+        for offset in  0..nr_whole_bytes {
+            for idx in 0..8 {
+                dst.push((src[offset] >> idx) & 1u8);
+            }
+        }
+        // Do the final (partial) byte, if required
+        if nr_remainder_bits != 0 {
+            for idx in 0..nr_remainder_bits {
+                dst.push((src[nr_whole_bytes] >> idx) & 1u8);
+            }
+        }
+    } else {
+        for offset in  0..nr_whole_bytes {
+            for idx in 0..8 {
+                dst.push((src[offset] >> (7 - idx)) & 1u8);
+            }
+        }
+        if nr_remainder_bits != 0 {
+            for idx in 0..nr_remainder_bits {
+                dst.push((src[nr_whole_bytes] >> (7 - idx)) & 1u8);
+            }
+        }
+
+    }
+
+    Ok(PyByteArray::new(py, &dst))
 }
 
 
@@ -58,7 +180,7 @@ fn _parse_header(src: &[u8; 64]) -> [u32; 15] {
     Parameters
     ----------
     src
-        The 64 byte RLE header.
+        The 64 byte RLE header containing 15 little-endian ordered offset values.
     */
     return [
         u32::from_le_bytes([ src[4],  src[5],  src[6],  src[7]]),
@@ -94,7 +216,7 @@ fn decode_frame<'py>(
         The total number of pixels in the frame (rows x columns),
         maximum (2^32 - 1).
     bpp : int
-        The number of bits per pixel, supported values 8, 16, 32, 64.
+        The number of bits per pixel, supported values 1, 8, 16, 32, 64.
     byteorder : str
         The byte order of the returned data, '<' for little endian, '>' for
         big endian.
@@ -123,7 +245,7 @@ fn _decode_frame(
     nr_pixels
         The total number of pixels in the frame (rows x columns).
     bpp
-        The number of bits per pixel, should be a multiple of 8 and no larger
+        The number of bits per pixel, should be 1 or a multiple of 8 and no larger
         than 64.
     byteorder
         The byte order of the decoded data, '<' for little endian, '>' for
@@ -133,7 +255,7 @@ fn _decode_frame(
     // Pre-define our errors for neatness
     let err_invalid_bits_allocated = Err(
         String::from(
-            "The (0028,0100) 'Bits Allocated' value must be 8, 16, 32 or 64"
+            "The (0028,0100) 'Bits Allocated' value must be 1, 8, 16, 32 or 64"
         ).into()
     );
     let err_invalid_offset = Err(
@@ -145,6 +267,11 @@ fn _decode_frame(
     let err_invalid_nr_samples = Err(
         String::from("The (0028,0002) 'Samples per Pixel' must be 1 or 3").into()
     );
+    let err_invalid_nr_samples_ba1 = Err(
+        String::from(
+            "The (0028,0002) 'Samples per Pixel' must be 1 if (0028,0100) 'Bits Allocated' is 1"
+        ).into()
+    );
     let err_segment_length = Err(
         String::from(
             "The decoded segment length does not match the expected length"
@@ -154,17 +281,23 @@ fn _decode_frame(
         String::from("'byteorder' must be '>' or '<'").into()
     );
 
-    // Ensure we have a valid bits/px value
+    // Check 'Bits Allocated' is 1 or a multiple of 8
+    let bytes_per_pixel: u8;  // Valid values are 1 | 2 | 4 | 8
     match bpp {
         0 => return err_invalid_bits_allocated,
+        1 => {
+                bytes_per_pixel = 1;
+        },
         _ => match bpp % 8 {
-            0 => {},
+            0 => {
+                bytes_per_pixel = bpp / 8;
+            },
             _ => return err_invalid_bits_allocated
         }
     }
 
-    // Ensure `bytes_per_pixel` is in [1, 2, 4, 8]
-    let bytes_per_pixel: u8 = bpp / 8;
+    // Check `byteorder` is a valid character
+    // Check *Bits Allocated* is in [1, 8, 16, 32, 64]
     match bytes_per_pixel {
         1 => {},
         2 | 4 | 8 => match byteorder {
@@ -180,7 +313,10 @@ fn _decode_frame(
     let encoded_length = src.len();
     if encoded_length < 64 { return err_insufficient_data }
 
+    // Don't need to check the unwrap as we just checked
+    //   there's enough data in `src`
     let header = <&[u8; 64]>::try_from(&src[0..64]).unwrap();
+    // All 15 header offsets, however no guarantee they will be non-zero
     let all_offsets: [u32; 15] = _parse_header(header);
 
     // First offset must always be 64
@@ -209,21 +345,19 @@ fn _decode_frame(
     // Check the samples per pixel is conformant
     let spp: u8 = nr_segments / bytes_per_pixel;
     match spp {
-        1 | 3 => {},
+        1 => {},
+        3 => {
+            // Bits allocated 1 must be 1 sample per pixel
+            match bpp {
+                1 => { return err_invalid_nr_samples_ba1 },
+                _ => {}
+            }
+        },
         _ => return err_invalid_nr_samples
     }
 
-    // Watch for overflow here; u32 * u32 -> u64
-    let expected_length = usize::try_from(
-        nr_pixels * u32::from(bytes_per_pixel * spp)
-    ).unwrap();
-
-    // Pre-allocate a vector for the decoded frame
-    let mut frame = vec![0u8; expected_length];
-
-    /*
-    Example
-    -------
+    /* Example
+    ----------
     RLE encoded data is ordered like this (for 16-bit, 3 sample):
       Segment: 1     | 2     | 3     | 4     | 5     | 6
                R MSB | R LSB | G MSB | G LSB | B MSB | B LSB
@@ -240,8 +374,18 @@ fn _decode_frame(
 
     // Decode each segment and place it into the vector
     // ------------------------------------------------
+    // TODO: handle unwrap
     let pps = usize::try_from(nr_pixels).unwrap();
     // Concatenate sample planes into a frame
+    // Watch for overflow here; u32 * u32 -> u64
+    // Actual values are (u16 * u16) * u8
+    let expected_length = usize::try_from(
+        nr_pixels * u32::from(nr_segments)
+    ).unwrap();
+
+    // Pre-allocate a vector for the decoded frame
+    let mut frame = vec![0u8; expected_length];
+
     for sample in 0..spp {  // 0 or (0, 1, 2)
         // Sample offset
         let so = usize::from(sample * bytes_per_pixel) * pps;
@@ -271,11 +415,12 @@ fn _decode_frame(
                 usize::from(bytes_per_pixel),
                 usize::from(byte_offset) + so
             )?;
+
             if len != pps { return err_segment_length }
         }
     }
 
-    Ok(frame)
+    return Ok(frame)
 }
 
 
@@ -462,7 +607,7 @@ fn _decode_segment(src: &[u8], dst: &mut Vec<u8>) -> Result<(), Box<dyn Error>> 
 
 #[pyfunction]
 fn encode_frame<'py>(
-    src: &[u8], rows: u16, cols: u16, spp: u8, bpp: u8, byteorder: char, py: Python<'py>
+    src: Vec<u8>, rows: u16, cols: u16, spp: u8, bpp: u8, byteorder: char, py: Python<'py>
 ) -> PyResult<Bound<'py, PyBytes>> {
     /* Return RLE encoded `src` as bytes.
 
@@ -478,7 +623,7 @@ fn encode_frame<'py>(
     spp : int
         The number of samples per pixel, supported values are 1 or 3.
     bpp : int
-        The number of bits per pixel, supported values are 8, 16, 32 and 64.
+        The number of bits per pixel, supported values are 1, 8, 16, 32 and 64.
     byteorder : str
         Required if `bpp` is greater than 1, '>' if `src` is in big endian byte
         order, '<' if little endian.
@@ -497,15 +642,15 @@ fn encode_frame<'py>(
 
 
 fn _encode_frame(
-    src: &[u8], dst: &mut Vec<u8>, rows: u16, cols: u16, spp: u8, bpp: u8, byteorder: char
+    src: Vec<u8>, dst: &mut Vec<u8>, rows: u16, cols: u16, spp: u8, bpp: u8, byteorder: char
 ) -> Result<(), Box<dyn Error>> {
     /*
 
     Parameters
     ----------
     src
-        The data to be RLE encoded, ordered as R1, G1, B1, R2, G2, B2, ...,
-        Rn, Gn, Bn (i.e. Planar Configuration 0).
+        The data to be RLE encoded, with multi-sample data ordered as R1, G1, B1,
+        R2, G2, B2, ..., Rn, Gn, Bn (i.e. Planar Configuration 0).
     dst
         The vector storing the encoded data.
     rows
@@ -513,19 +658,27 @@ fn _encode_frame(
     cols
         The number of columns in the data.
     spp
-        The number of samples per pixel, supported values are 1 or 3.
+        The number of samples per pixel, supported values are 1 or 3. May only be 1 if `bpp`
+        is 1.
     bpp
-        The number of bits per pixel, supported values are 8, 16, 32 and 64.
+        The number of bits per pixel, supported values are 1, 8, 16, 32 and 64.
     byteorder
         Required if bpp is greater than 1, '>' if `src` is in big endian byte
         order, '<' if little endian.
     */
+
+    // Pre-define our errors for neatness
     let err_invalid_nr_samples = Err(
         String::from("The (0028,0002) 'Samples per Pixel' must be 1 or 3").into()
     );
+    let err_invalid_nr_samples_ba1 = Err(
+        String::from(
+            "The (0028,0002) 'Samples per Pixel' must be 1 if (0028,0100) 'Bits Allocated' is 1"
+        ).into()
+    );
     let err_invalid_bits_allocated = Err(
         String::from(
-            "The (0028,0100) 'Bits Allocated' value must be 8, 16, 32 or 64"
+            "The (0028,0100) 'Bits Allocated' value must be 1, 8, 16, 32 or 64"
         ).into()
     );
     let err_invalid_nr_segments = Err(
@@ -546,22 +699,30 @@ fn _encode_frame(
         String::from("'byteorder' must be '>' or '<'").into()
     );
 
-    // Check 'Samples per Pixel'
+    // Check 'Samples per Pixel' is either 1 or 3
+    // Check 'Bits Allocated' is 1 or a multiple of 8
+    // Check 'Samples per Pixel' is 1 if 'Bits Allocated' is 1
+    let bytes_per_pixel: u8;
     match spp {
-        1 | 3 => {},
+        1 => {
+            match bpp {
+                1 => { bytes_per_pixel = 1; },
+                8 | 16 | 32 | 64 => { bytes_per_pixel = bpp / 8; },
+                _ => { return err_invalid_bits_allocated }
+            }
+        }
+        3 => {
+            match bpp {
+                1 => { return err_invalid_nr_samples_ba1 },
+                8 | 16 | 32 | 64 => { bytes_per_pixel = bpp / 8; },
+                _ => { return err_invalid_bits_allocated }
+            }
+        },
         _ => return err_invalid_nr_samples
     }
 
-    // Check 'Bits Allocated'
-    match bpp {
-        0 => return err_invalid_bits_allocated,
-        _ => match bpp % 8 {
-            0 => {},
-            _ => return err_invalid_bits_allocated
-        }
-    }
-    // Ensure `bytes_per_pixel` is in [1, 2, 4, 8]
-    let bytes_per_pixel: u8 = bpp / 8;
+    // Check `byteorder` is a valid character
+    // Check *Bits Allocated* is in [1, 8, 16, 32, 64]
     match bytes_per_pixel {
         1 => {},
         2 | 4 | 8 => match byteorder {
@@ -572,10 +733,13 @@ fn _encode_frame(
     }
 
     // Ensure parameters are consistent
+    // TODO: handle unwrap
     let r = usize::try_from(rows).unwrap();
     let c = usize::try_from(cols).unwrap();
 
-    if src.len() != r * c * usize::from(spp * bytes_per_pixel) {
+    let total_pixels = r * c * usize::from(spp);
+    let total_length = total_pixels * usize::from(bytes_per_pixel);
+    if src.len() != total_length {
         return err_invalid_parameters
     }
 
@@ -587,10 +751,11 @@ fn _encode_frame(
     dst.extend(u32::from(nr_segments).to_le_bytes().to_vec());
     dst.extend([0u8; 60].to_vec());
 
-    // A vector of the start indexes used when segmenting - default big endian
+    // A vector of the start indexes used when segmenting
+    // Start with big-endian ordered pixel sample values
     let mut start_indices: Vec<usize> = (0..usize::from(nr_segments)).collect();
     if byteorder != '>' {
-        // `src` has little endian byte ordering
+        // Typically `src` uses little endian byte ordering
         for idx in 0..spp {
             let s = usize::from(idx * bytes_per_pixel);
             let e = usize::from((idx + 1) * bytes_per_pixel);
@@ -599,6 +764,8 @@ fn _encode_frame(
     }
 
     // Encode the data and update the RLE header segment offsets
+    // Segments are ordered from most significant byte to least significant for
+    //  multi-byte values
     for idx in 0..usize::from(nr_segments) {
         // Update RLE header: convert current offset to 4x le ordered u8s
         let current_offset = (u32::try_from(dst.len()).unwrap()).to_le_bytes();

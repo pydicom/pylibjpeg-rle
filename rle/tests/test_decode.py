@@ -69,19 +69,19 @@ class TestDecodeFrame:
 
     def test_bits_allocated_zero_raises(self):
         """Test exception raised for BitsAllocated 0."""
-        msg = r"The \(0028,0100\) 'Bits Allocated' value must be 8, 16, 32 or 64"
+        msg = r"The \(0028,0100\) 'Bits Allocated' value must be 1, 8, 16, 32 or 64"
         with pytest.raises(ValueError, match=msg):
             decode_frame(b"\x00\x00\x00\x00", 1, 0, "<")
 
     def test_bits_allocated_not_octal_raises(self):
-        """Test exception raised for BitsAllocated not a multiple of 8."""
-        msg = r"The \(0028,0100\) 'Bits Allocated' value must be 8, 16, 32 or 64"
+        """Test exception raised for BitsAllocated not 1 or a multiple of 8."""
+        msg = r"The \(0028,0100\) 'Bits Allocated' value must be 1, 8, 16, 32 or 64"
         with pytest.raises(ValueError, match=msg):
             decode_frame(b"\x00\x00\x00\x00", 1, 12, "<")
 
     def test_bits_allocated_large_raises(self):
         """Test exception raised for BitsAllocated greater than 64."""
-        msg = r"The \(0028,0100\) 'Bits Allocated' value must be 8, 16, 32 or 64"
+        msg = r"The \(0028,0100\) 'Bits Allocated' value must be 1, 8, 16, 32 or 64"
         with pytest.raises(ValueError, match=msg):
             decode_frame(b"\x00\x00\x00\x00", 1, 72, "<")
 
@@ -125,6 +125,28 @@ class TestDecodeFrame:
         d = self.as_bytes([64, 70])
         with pytest.raises(ValueError, match=msg):
             decode_frame(d + b"\x00" * 8, 1, 8, "<")
+
+        # Bits Allocated 1 must be Samples per Pixel 1
+        header = (
+            b"\x03\x00\x00\x00"  # 3 segments
+            b"\x40\x00\x00\x00"  # 64
+            b"\x47\x00\x00\x00"  # 71
+            b"\x4E\x00\x00\x00"  # 78
+        )
+        header += (64 - len(header)) * b"\x00"
+        # 2 x 3 data
+        # 0, 64, 128, 160, 192, 255
+        data = (
+            b"\x05\x00\x40\x80\xA0\xC0\xFF"  # R
+            b"\x05\xFF\xC0\x80\x40\x00\xFF"  # B
+            b"\x05\x01\x40\x80\xA0\xC0\xFE"  # G
+        )
+        msg = (
+            r"The \(0028,0002\) 'Samples per Pixel' must be 1 if \(0028,0100\) 'Bits "
+            r"Allocated' is 1"
+        )
+        with pytest.raises(ValueError, match=msg):
+            decoded = decode_frame(header + data, 2 * 3, 1, "<")
 
     def test_insufficient_frame_literal(self):
         """Test segment with excess padding on lit."""
@@ -356,6 +378,24 @@ class TestDecodeFrame:
         assert [0, 16777216, 65536, 256, 1, 4294967295] == arr[:6].tolist()
         assert [4294967295, 16777216, 65536, 256, 1, 0] == arr[6:12].tolist()
         assert [1, 16777216, 65536, 256, 1, 4294967294] == arr[12:].tolist()
+
+    def test_u8_1s_bs1(self):
+        """Test decoding bit packed 1 sample/px."""
+        header = b"\x01\x00\x00\x00\x40\x00\x00\x00"
+        header += (64 - len(header)) * b"\x00"
+        # 0 0 0 0 0 1 0 1 0 1 1 0 1 1 1 1
+        data = b"\xFC\x00\x07\x01\x00\x01\x00\x01\x01\x00\x01\xFD\x01\x00"
+        decoded = decode_frame(header + data, 16, 1, ">")
+        arr = np.frombuffer(decoded, np.dtype("uint8"))
+        assert [0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1] == arr.tolist()
+        decoded = decode_frame(header + data, 16, 1, "<")
+        assert [0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1] == arr.tolist()
+
+        # 0 0 0 0 0 1 0 1 0 1 1 0 1 1 1
+        data = b"\xFC\x00\x07\x01\x00\x01\x00\x01\x01\x00\x01\xFE\x01\x00"
+        decoded = decode_frame(header + data, 15, 1, ">")
+        arr = np.frombuffer(decoded, np.dtype("uint8"))
+        assert [0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1] == arr.tolist()
 
 
 @pytest.mark.skipif(not HAVE_PYDICOM, reason="No pydicom")
