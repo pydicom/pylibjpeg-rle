@@ -25,8 +25,10 @@ from rle.utils import (
     encode_array,
     pixel_data,
     pixel_array,
+    pack_bits,
+    unpack_bits,
 )
-from rle.rle import pack_bits, unpack_bits
+from rle.rle import pack_bits as _pack_bits, unpack_bits as _unpack_bits
 
 
 INDEX_LEE = get_indexed_datasets("1.2.840.10008.1.2.1")
@@ -383,10 +385,20 @@ REFERENCE_PACK_UNPACK = [
 
 
 class TestUnpackBits:
-    """Tests for unpack_bits()."""
+    """Tests for _unpack_bits()."""
 
     @pytest.mark.parametrize("src, little, big", REFERENCE_PACK_UNPACK)
     def test_unpack_bytes(self, src, little, big):
+        """Test unpacking data without numpy."""
+        as_bytes = pack(f"{len(little)}B", *little)
+        assert _unpack_bits(src, 0, "<") == as_bytes
+        assert _unpack_bits(src, 32, "<") == as_bytes
+        as_bytes = pack(f"{len(big)}B", *big)
+        assert _unpack_bits(src, 0, ">") == as_bytes
+        assert _unpack_bits(src, 32, ">") == as_bytes
+
+    @pytest.mark.parametrize("src, little, big", REFERENCE_PACK_UNPACK)
+    def test_unpack_bytes_util(self, src, little, big):
         """Test unpacking data without numpy."""
         as_bytes = pack(f"{len(little)}B", *little)
         assert unpack_bits(src, 0, "<") == as_bytes
@@ -397,6 +409,31 @@ class TestUnpackBits:
 
     def test_count_little(self):
         """Test the `count` parameter for little endian unpacking."""
+        assert _unpack_bits(b"\x00", 1, "<") == b"\x00"
+        assert _unpack_bits(b"\xff", 1, "<") == b"\x01"
+        assert _unpack_bits(b"\xff", 2, "<") == b"\x01" * 2
+        assert _unpack_bits(b"\xff", 3, "<") == b"\x01" * 3
+        assert _unpack_bits(b"\xff", 4, "<") == b"\x01" * 4
+        assert _unpack_bits(b"\xff", 5, "<") == b"\x01" * 5
+        assert _unpack_bits(b"\xff", 6, "<") == b"\x01" * 6
+        assert _unpack_bits(b"\xff", 7, "<") == b"\x01" * 7
+        assert _unpack_bits(b"\xff", 8, "<") == b"\x01" * 8
+        assert _unpack_bits(b"\xff\xAA", 9, "<") == b"\x01" * 8 + b"\x00"
+        assert _unpack_bits(b"\xff\xAA", 10, "<") == b"\x01" * 8 + b"\x00\x01"
+        assert _unpack_bits(b"\xff\xAA", 11, "<") == b"\x01" * 8 + b"\x00\x01\x00"
+        assert _unpack_bits(b"\xff\xAA", 12, "<") == b"\x01" * 8 + b"\x00\x01" * 2
+        assert _unpack_bits(b"\xff\xAA", 13, "<") == b"\x01" * 8 + b"\x00\x01" * 2 + b"\x00"
+        assert _unpack_bits(b"\xff\xAA", 14, "<") == b"\x01" * 8 + b"\x00\x01" * 3
+        assert _unpack_bits(b"\xff\xAA", 15, "<") == b"\x01" * 8 + b"\x00\x01" * 3 + b"\x00"
+        assert _unpack_bits(b"\xff\xAA", 16, "<") == b"\x01" * 8 + b"\x00\x01" * 4
+
+    def test_count_little_util(self):
+        """Test the `count` parameter for little endian unpacking."""
+        assert unpack_bits(b"\x00", -1, "<") == b"\x00" * 8
+        assert unpack_bits(b"\x00", 10, "<") == b"\x00" * 8
+        assert unpack_bits(b"\x00", None, "<") == b"\x00" * 8
+        assert unpack_bits(b"\x00", 0, "<") == b"\x00" * 8
+
         assert unpack_bits(b"\x00", 1, "<") == b"\x00"
         assert unpack_bits(b"\xff", 1, "<") == b"\x01"
         assert unpack_bits(b"\xff", 2, "<") == b"\x01" * 2
@@ -417,31 +454,31 @@ class TestUnpackBits:
 
     def test_count_big(self):
         """Test the `count` parameter for big endian unpacking."""
-        assert unpack_bits(b"\x00", 1, ">") == b"\x00"
-        assert unpack_bits(b"\xff", 1, ">") == b"\x01"
-        assert unpack_bits(b"\xff", 2, ">") == b"\x01" * 2
-        assert unpack_bits(b"\xff", 3, ">") == b"\x01" * 3
-        assert unpack_bits(b"\xff", 4, ">") == b"\x01" * 4
-        assert unpack_bits(b"\xff", 5, ">") == b"\x01" * 5
-        assert unpack_bits(b"\xff", 6, ">") == b"\x01" * 6
-        assert unpack_bits(b"\xff", 7, ">") == b"\x01" * 7
-        assert unpack_bits(b"\xff", 8, ">") == b"\x01" * 8
-        assert unpack_bits(b"\xff\xAA", 9, ">") == b"\x01" * 8 + b"\x01"
-        assert unpack_bits(b"\xff\xAA", 10, ">") == b"\x01" * 8 + b"\x01\x00"
-        assert unpack_bits(b"\xff\xAA", 11, ">") == b"\x01" * 8 + b"\x01\x00\x01"
-        assert unpack_bits(b"\xff\xAA", 12, ">") == b"\x01" * 8 + b"\x01\x00" * 2
-        assert unpack_bits(b"\xff\xAA", 13, ">") == b"\x01" * 8 + b"\x01\x00" * 2 + b"\x01"
-        assert unpack_bits(b"\xff\xAA", 14, ">") == b"\x01" * 8 + b"\x01\x00" * 3
-        assert unpack_bits(b"\xff\xAA", 15, ">") == b"\x01" * 8 + b"\x01\x00" * 3 + b"\x01"
-        assert unpack_bits(b"\xff\xAA", 16, ">") == b"\x01" * 8 + b"\x01\x00" * 4
+        assert _unpack_bits(b"\x00", 1, ">") == b"\x00"
+        assert _unpack_bits(b"\xff", 1, ">") == b"\x01"
+        assert _unpack_bits(b"\xff", 2, ">") == b"\x01" * 2
+        assert _unpack_bits(b"\xff", 3, ">") == b"\x01" * 3
+        assert _unpack_bits(b"\xff", 4, ">") == b"\x01" * 4
+        assert _unpack_bits(b"\xff", 5, ">") == b"\x01" * 5
+        assert _unpack_bits(b"\xff", 6, ">") == b"\x01" * 6
+        assert _unpack_bits(b"\xff", 7, ">") == b"\x01" * 7
+        assert _unpack_bits(b"\xff", 8, ">") == b"\x01" * 8
+        assert _unpack_bits(b"\xff\xAA", 9, ">") == b"\x01" * 8 + b"\x01"
+        assert _unpack_bits(b"\xff\xAA", 10, ">") == b"\x01" * 8 + b"\x01\x00"
+        assert _unpack_bits(b"\xff\xAA", 11, ">") == b"\x01" * 8 + b"\x01\x00\x01"
+        assert _unpack_bits(b"\xff\xAA", 12, ">") == b"\x01" * 8 + b"\x01\x00" * 2
+        assert _unpack_bits(b"\xff\xAA", 13, ">") == b"\x01" * 8 + b"\x01\x00" * 2 + b"\x01"
+        assert _unpack_bits(b"\xff\xAA", 14, ">") == b"\x01" * 8 + b"\x01\x00" * 3
+        assert _unpack_bits(b"\xff\xAA", 15, ">") == b"\x01" * 8 + b"\x01\x00" * 3 + b"\x01"
+        assert _unpack_bits(b"\xff\xAA", 16, ">") == b"\x01" * 8 + b"\x01\x00" * 4
 
     @pytest.mark.parametrize("src, little, big", REFERENCE_PACK_UNPACK)
     def test_unpack_bytearray(self, src, little, big):
         """Test unpacking data without numpy."""
         as_bytes = pack(f"{len(little)}B", *little)
-        assert unpack_bits(bytearray(src), 0, "<") == as_bytes
+        assert _unpack_bits(bytearray(src), 0, "<") == as_bytes
         as_bytes = pack(f"{len(big)}B", *big)
-        assert unpack_bits(bytearray(src), 0, ">") == as_bytes
+        assert _unpack_bits(bytearray(src), 0, ">") == as_bytes
 
 
 REFERENCE_PACK_PARTIAL_LITTLE = [
@@ -490,20 +527,26 @@ class TestPackBits:
     @pytest.mark.parametrize("output, little, big", REFERENCE_PACK_UNPACK)
     def test_pack_bytes(self, output, little, big):
         """Test packing data."""
+        assert output == _pack_bits(bytes(little), "<")
+        assert output == _pack_bits(bytes(big), ">")
+
+    @pytest.mark.parametrize("output, little, big", REFERENCE_PACK_UNPACK)
+    def test_pack_bytes_utils(self, output, little, big):
+        """Test packing data."""
         assert output == pack_bits(bytes(little), "<")
         assert output == pack_bits(bytes(big), ">")
 
     @pytest.mark.parametrize("output, little, big", REFERENCE_PACK_UNPACK)
     def test_pack_bytearray(self, output, little, big):
         """Test packing data."""
-        assert output == pack_bits(bytearray(little), "<")
-        assert output == pack_bits(bytearray(big), ">")
+        assert output == _pack_bits(bytearray(little), "<")
+        assert output == _pack_bits(bytearray(big), ">")
 
     def test_non_binary_input(self):
         """Test non-binary input raises exception."""
         msg = r"Only binary input \(containing zeros or ones\) can be packed"
         with pytest.raises(ValueError, match=msg):
-            pack_bits(b"\x00\x00\x02\x00\x00\x00\x00\x00", "<")
+            _pack_bits(b"\x00\x00\x02\x00\x00\x00\x00\x00", "<")
 
     def test_bytes_input(self):
         """Repeat above test with bytes input."""
@@ -516,8 +559,8 @@ class TestPackBits:
             ]
         )
         # fmt: on
-        assert b"\x00\x55\xff" == pack_bits(src, "<")
-        assert b"\x00\xAA\xff" == pack_bits(src, ">")
+        assert b"\x00\x55\xff" == _pack_bits(src, "<")
+        assert b"\x00\xAA\xff" == _pack_bits(src, ">")
 
     def test_bytearry_input(self):
         """Repeat above test with bytearray input."""
@@ -530,25 +573,25 @@ class TestPackBits:
             ]
         )
         # fmt: on
-        assert b"\x00\x55\xff" == pack_bits(src, "<")
-        assert b"\x00\xAA\xff" == pack_bits(src, ">")
+        assert b"\x00\x55\xff" == _pack_bits(src, "<")
+        assert b"\x00\xAA\xff" == _pack_bits(src, ">")
 
     @pytest.mark.parametrize("output, src", REFERENCE_PACK_PARTIAL_LITTLE)
     def test_pack_partial_bytes(self, src, output):
         """Test packing data that isn't a full byte long."""
-        assert output == pack_bits(bytes(src), "<")
+        assert output == _pack_bits(bytes(src), "<")
 
     @pytest.mark.parametrize("output, src", REFERENCE_PACK_PARTIAL_LITTLE)
     def test_pack_partial_bytearray(self, src, output):
         """Test packing data that isn't a full byte long."""
-        assert output == pack_bits(bytearray(src), "<")
+        assert output == _pack_bits(bytearray(src), "<")
 
     @pytest.mark.parametrize("output, src", REFERENCE_PACK_PARTIAL_BIG)
     def test_pack_partial_bytes_big(self, src, output):
         """Test packing data that isn't a full byte long."""
-        assert output == pack_bits(bytes(src), ">")
+        assert output == _pack_bits(bytes(src), ">")
 
     @pytest.mark.parametrize("output, src", REFERENCE_PACK_PARTIAL_BIG)
     def test_pack_partial_bytearray_big(self, src, output):
         """Test packing data that isn't a full byte long."""
-        assert output == pack_bits(bytearray(src), ">")
+        assert output == _pack_bits(bytearray(src), ">")

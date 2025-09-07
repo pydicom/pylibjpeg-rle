@@ -429,7 +429,7 @@ def pack_bits(src: bytes | bytearray, bitorder: str = "<") -> bytearray:
 
 
 def unpack_bits(
-    src: bytes | bytearray, count: int | None = None, bitorder: str = "<"
+        src: bytes | bytearray, count: int | None = None, bitorder: str = "<"
     ) -> bytearray:
     """Bit unpack `src`
 
