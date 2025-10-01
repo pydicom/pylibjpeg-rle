@@ -21,7 +21,7 @@ jobs:
       run:
         curl https://sh.rustup.rs -sSf | sh -s -- -y
 
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v6
       name: Install Python
       with:
         python-version: '3.11'
@@ -167,7 +167,7 @@ jobs:
       run:
         curl https://sh.rustup.rs -sSf | sh -s -- -y
 
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v6
       name: Install Python
       with:
         python-version: '3.11'
@@ -214,7 +214,7 @@ jobs:
   #       curl https://sh.rustup.rs -sSf | sh -s -- -y
   #
   #   - name: Set up Python ${{ matrix.python-version }}
-  #     uses: actions/setup-python@v5
+  #     uses: actions/setup-python@v6
   #     with:
   #       python-version: ${{ matrix.python-version }}
   #
